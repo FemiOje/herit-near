@@ -234,6 +234,43 @@ The properties the suite pins down, in plain English:
 
 > The fork suites skip when `ETH_SEPOLIA_RPC_URL` is unset, which is how CI runs them. Set it locally to run all 45.
 
+## Security
+
+> [!WARNING]
+> **These contracts are unaudited and must not be used in production.** They were written in four days for a hackathon, hold testnet value only, and have had no professional review. The attestor key is a live centralization point — see [Known issues](#known-issues).
+
+### Static analysis
+
+Two tools, both run against `src/` at the deployed commit. Full triaged write-ups, finding by finding, are in [`security/static-analysis/`](security/static-analysis/).
+
+| Tool | Version | Findings | Outcome |
+|---|---|---|---|
+| [Slither](security/static-analysis/slither.md) | 0.11.5 | 45 results · 52 contracts · 101 detectors | No vulnerabilities. 1 high and 3 medium are false positives; the rest are accepted by design. |
+| [Aderyn](security/static-analysis/aderyn.md) | 0.6.8 | 8 issues · 1 high, 7 low | No vulnerabilities. The high overlaps Slither's reentrancy family; two lows are worth fixing. |
+
+Every finding was checked against the source rather than passed through. The three that look worst are the three that are wrong:
+
+- **`arbitrary-send-eth` (High)** on `HeritVault._send` — it is `internal` with two callers, `withdraw` (`onlyGrantorOf`, `notUnlocked`, sends to `msg.sender`) and `payOut` (`onlyClaimManager`, sends to the heir ENS resolved). `to` is never caller-supplied on an unguarded path.
+- **`reentrancy-no-eth` on `ClaimManager.claim`** — reads as a checks-effects-interactions violation and is the opposite. `s_paid` is written at L99, `payOut` is called at L101; the effect precedes the interaction. The "after" in the report refers to the earlier `pokeExpiry` at L80. The function is `nonReentrant` and `onlyAttestor`.
+- **`incorrect-equality` (Medium, ×3)** — that detector hunts strict equality against `block.timestamp` or balances. All three compare `Status` enum members or the fee-on-transfer zero guard, where equality is the only correct operator.
+
+Two findings are real and deliberately left for after the hackathon: `nonReentrant` is declared second on `unlockHeir` and `renewEstate`, so the guard is set after the access check (safe today only because that check makes no external call), and two errors are declared but never reverted — `LivenessAttestor__InvalidSigner` and `HeritRegistry__EstateNotFound`.
+
+### Coverage
+
+`forge coverage`, contracts only. Deploy scripts and the ERC20 mocks are omitted.
+
+| File | Lines | Statements | Branches | Functions |
+|---|---|---|---|---|
+| `src/HeritVault.sol` | 92.00% (92/100) | 92.05% (81/88) | 66.67% (14/21) | 100.00% (21/21) |
+| `src/LivenessAttestor.sol` | 88.24% (45/51) | 83.64% (46/55) | 56.25% (9/16) | 75.00% (6/8) |
+| `src/AccessControlGate.sol` | 74.23% (72/97) | 78.85% (82/104) | 0.00% (0/14) | 83.33% (15/18) |
+| `src/HeritRegistry.sol` | 63.75% (102/160) | 62.58% (102/163) | 28.12% (9/32) | 70.97% (22/31) |
+| `src/ClaimManager.sol` | 62.96% (34/54) | 56.06% (37/66) | 13.33% (2/15) | 50.00% (4/8) |
+| **Repo total** (incl. scripts) | **53.00%** (371/700) | **50.76%** (366/721) | **18.72%** (35/187) | **63.71%** (79/124) |
+
+Read honestly: the two contracts holding value and verifying signatures are the best covered, and **branch coverage is the weak number**. `AccessControlGate` reads 0% branches because its paths run through the fork suite, where the ENS calls it makes are not instrumented the same way — its lines are 74% covered by those same tests. The revert paths that matter most are covered as named tests rather than as branch percentages; the list under [Testing](#testing) is the accurate picture of what is actually pinned down. Raising branch coverage on `ClaimManager` and `HeritRegistry` is the first thing to do with more time.
+
 ## Known issues
 
 **The attestor key is the centralization point, and rotating it means redeploying everything.** `LivenessAttestor.I_SIGNER` is `immutable`, and all five contracts hold each other as immutables, so a key rotation replaces the set. A post-deploy setter was rejected deliberately: it would leave a permanent function through which the privileged signer could be repointed. The key is narrow — domain-separated to Herit, holds no funds, holds no gas, and can only assert that a Selfie Check passed. It is the top thing to decentralize.
