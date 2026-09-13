@@ -77,10 +77,10 @@ export function Hero() {
           </div>
 
           {/* Selfie Check is access-gated by World, so the flow fails for anyone without sandbox access. */}
-          <span className="mt-4 block max-w-lg text-xs leading-relaxed text-muted">
+          <span className="mt-5 block max-w-lg rounded-[10px] border-2 border-dashed border-coral px-4 py-3 text-xs leading-relaxed text-muted">
             ⚠️heads up: the Selfie Check only works if World has given you
             access to the <strong className="text-ink">World ID Sandbox</strong>
-            . request it from the World team first —{" "}
+            . request it from the World team first.
             <a
               href="https://docs.world.org/world-id/sandbox/sandbox-access"
               target="_blank"
@@ -89,7 +89,7 @@ export function Hero() {
             >
               how to get sandbox access
             </a>{" "}
-            ·{" "}
+            ·{"    "}
             <a
               href="https://docs.world.org/world-id/sandbox/testing-selfie-check"
               target="_blank"
