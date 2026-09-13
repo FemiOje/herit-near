@@ -58,19 +58,19 @@ export const JOURNEY_STEPS: readonly {
   },
   {
     title: "name your heirs",
-    body: "mint son.alice.herit.eth for each next-of-kin with a relationship record and a share in basis points. the claim role is deliberately withheld at registration — that withheld bit is the inheritance.",
+    body: "mint son.alice.herit.eth for each next-of-kin with a relationship record and a share in basis points. the claim role is deliberately withheld at registration.",
     icon: HeirIcon,
     color: "bg-pink",
   },
   {
     title: "set the clock and fund the vault",
-    body: "pick a check-in interval and a grace period, then escrow exactly what you intend to will. an opt-in vault, not a module over your whole wallet, so the custody boundary stays legible.",
+    body: "pick a check-in interval and a grace period, then escrow exactly what you intend to will into an opt-in vault.",
     icon: VaultIcon,
     color: "bg-teal",
   },
   {
     title: "keep proving you are alive",
-    body: "one Selfie Check per interval resets the clock. miss it and grace begins; miss grace and anyone may poke the registry, which grants the claim role to your heirs. no one has to remember to act.",
+    body: "one Selfie Check per interval resets the clock. miss it and grace begins; miss grace and anyone may poke the registry, which grants the claim role to your heirs.",
     icon: PulseIcon,
     color: "bg-yellow",
   },
@@ -98,7 +98,7 @@ export const CLOCK_STAGES: readonly {
     color: "bg-yellow",
     icon: ClockIcon,
     lead: "a window closed with no check-in",
-    body: "the safety margin for travel, illness, or a bad network day. one valid Selfie Check here returns the estate to active with nothing lost. heirs are notified, not empowered.",
+    body: "the safety harness for travel, illness, or a bad network day. one valid Selfie Check here returns the estate to active with nothing lost. heirs are notified.",
     footer: "reversible by you",
   },
   {
@@ -106,7 +106,7 @@ export const CLOCK_STAGES: readonly {
     color: "bg-coral",
     icon: UnlockIcon,
     lead: "grace lapsed too",
-    body: "anyone may poke the registry — no privileged caller, no herit intervention. ROLE_HEIR_CLAIM lands on each heir subname. each heir then passes their own Selfie Check to claim their share.",
+    body: "anyone may poke the registry. ROLE_HEIR_CLAIM lands on each heir subname. each heir then passes their own Selfie Check to claim their share.",
     footer: "heirs: claimable",
   },
 ];

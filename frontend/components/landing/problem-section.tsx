@@ -6,8 +6,18 @@ import { PROBLEMS } from "@/lib/content/landing";
 export function ProblemSection() {
   return (
     <section className="relative overflow-hidden px-4 py-14 sm:px-6 sm:py-20">
-      <Sparkle className="right-[6%] top-[10%]" size={28} fill="#FFE566" rotate={20} />
-      <Star className="left-[5%] bottom-[12%]" size={30} fill="#4ECDC4" rotate={-15} />
+      <Sparkle
+        className="right-[6%] top-[10%]"
+        size={28}
+        fill="#FFE566"
+        rotate={20}
+      />
+      <Star
+        className="left-[5%] bottom-[12%]"
+        size={30}
+        fill="#4ECDC4"
+        rotate={-15}
+      />
 
       <div className="relative z-10 mx-auto max-w-6xl">
         <Reveal>
@@ -15,8 +25,7 @@ export function ProblemSection() {
             every dead-man&apos;s switch breaks in the same two places
           </h2>
           <p className="mt-4 max-w-xl text-base text-muted">
-            crypto inheritance is not a hard contract problem. it is an identity problem
-            wearing a contract costume — and it fails twice.
+            crypto inheritance has an identity problem.
           </p>
         </Reveal>
 

@@ -58,8 +58,8 @@ export function Hero() {
           </h1>
 
           <p className="mt-6 max-w-lg text-base leading-relaxed text-muted sm:mt-7">
-            herit hands your on-chain estate to named next-of-kin — but only
-            once you stop proving you are alive. heirs are{" "}
+            herit hands your on-chain estate to named next-of-kin once you stop
+            proving you are alive. estate heirs are{" "}
             <strong className="text-ink">ENS subnames</strong> carrying real
             permissions, not raw addresses. liveness is a{" "}
             <strong className="text-ink">World ID Selfie Check</strong>, not a

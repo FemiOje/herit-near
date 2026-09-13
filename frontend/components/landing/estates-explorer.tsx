@@ -54,8 +54,16 @@ const COLUMNS =
 
 export function EstatesExplorer() {
   return (
-    <section id="estates" className="relative scroll-mt-24 overflow-hidden px-4 py-14 sm:px-6 sm:py-20">
-      <Star className="left-[5%] top-[10%] hidden sm:block" size={34} fill="#4ECDC4" rotate={-8} />
+    <section
+      id="estates"
+      className="relative scroll-mt-24 overflow-hidden px-4 py-14 sm:px-6 sm:py-20"
+    >
+      <Star
+        className="left-[5%] top-[10%] hidden sm:block"
+        size={34}
+        fill="#4ECDC4"
+        rotate={-8}
+      />
       <Blob className="-right-8 bottom-[18%]" size={76} fill="#FFE566" />
 
       <div className="relative z-10 mx-auto max-w-6xl">
@@ -63,10 +71,10 @@ export function EstatesExplorer() {
           <span className="tag tag-shadow bg-teal">live on sepolia</span>
           <h2 className="mt-5 max-w-2xl">every estate opened so far</h2>
           <p className="mt-4 max-w-xl text-base text-muted">
-            not a screenshot. <strong className="text-ink">The Graph</strong> indexes every
-            estate herit opens, and each row is then filled in from the contracts as you look at
-            it — where the clock stands, and which ENS subnames are waiting on it. open a row to
-            see the heirs and their shares.
+            <strong className="text-ink">The Graph</strong> indexes every estate
+            herit opens, and each row is then filled in from the contracts as
+            you look at it, where the clock stands, and which ENS subnames are
+            waiting on it. open a row to see the heirs and their shares.
           </p>
         </Reveal>
 
@@ -83,11 +91,15 @@ function Explorer() {
   // than a failed read — said plainly, the way the activity feed says it.
   if (SUBGRAPH_URL === undefined) {
     return (
-      <PanelCard title={TITLE} subtitle="every estate herit has opened" className="mt-10">
+      <PanelCard
+        title={TITLE}
+        subtitle="every estate herit has opened"
+        className="mt-10"
+      >
         <PanelEmpty>
           the estate index is not connected. set{" "}
-          <span className="mono">NEXT_PUBLIC_SUBGRAPH_URL</span> to the herit subgraph&apos;s query
-          url from subgraph studio.
+          <span className="mono">NEXT_PUBLIC_SUBGRAPH_URL</span> to the herit
+          subgraph&apos;s query url from subgraph studio.
         </PanelEmpty>
       </PanelCard>
     );
@@ -101,7 +113,8 @@ function Explorer() {
 }
 
 /** One row's worth: what the indexer recorded at opening, plus what the chain says right now. */
-type ExplorerRow = EstateOverview & Pick<OpenedEstate, "grantor" | "estateRegistry" | "openedAt">;
+type ExplorerRow = EstateOverview &
+  Pick<OpenedEstate, "grantor" | "estateRegistry" | "openedAt">;
 
 function Rows({ indexed }: { indexed: AllEstates }) {
   // `useEstateOverviews` takes any list of estates, not the connected wallet's — one multicall per
@@ -116,8 +129,8 @@ function Rows({ indexed }: { indexed: AllEstates }) {
     return (
       <PanelCard title={TITLE} subtitle={subtitle} className="mt-10">
         <PanelEmpty>
-          no estates opened on this deployment yet. the first one to run through setup appears here
-          a few seconds after it lands.
+          no estates opened on this deployment yet. the first one to run through
+          setup appears here a few seconds after it lands.
         </PanelEmpty>
       </PanelCard>
     );
@@ -141,7 +154,13 @@ function Rows({ indexed }: { indexed: AllEstates }) {
   );
 }
 
-function Table({ rows, subtitle }: { rows: readonly ExplorerRow[]; subtitle: string }) {
+function Table({
+  rows,
+  subtitle,
+}: {
+  rows: readonly ExplorerRow[];
+  subtitle: string;
+}) {
   // Safe to seed from the wall clock: this only renders once the reads above have resolved, which
   // never happens during the server render, so there is no snapshot for hydration to disagree with.
   const now = useNow(nowSeconds());
@@ -178,7 +197,9 @@ function Table({ rows, subtitle }: { rows: readonly ExplorerRow[]; subtitle: str
                   aria-expanded={expanded}
                   aria-controls={panelId}
                   className={`grid w-full grid-cols-2 items-center gap-x-4 gap-y-3 px-5 py-3.5 text-left transition-colors sm:px-6 ${COLUMNS} ${
-                    expanded ? "bg-cream" : "hover:bg-cream focus-visible:bg-cream"
+                    expanded
+                      ? "bg-cream"
+                      : "hover:bg-cream focus-visible:bg-cream"
                   }`}
                 >
                   <span className="col-span-2 flex min-w-0 items-center gap-2 lg:col-span-1">
@@ -187,7 +208,9 @@ function Table({ rows, subtitle }: { rows: readonly ExplorerRow[]; subtitle: str
                       className={`flex-shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
                     />
                     <span className="min-w-0">
-                      <span className="mono block truncate text-sm font-bold">{fullName(row)}</span>
+                      <span className="mono block truncate text-sm font-bold">
+                        {fullName(row)}
+                      </span>
                       <span className="block truncate text-[0.7rem] text-muted">
                         opened {formatAgo(Math.max(0, now - row.openedAt))}
                       </span>
@@ -196,7 +219,12 @@ function Table({ rows, subtitle }: { rows: readonly ExplorerRow[]; subtitle: str
 
                   {/* The one cell that is only a value: below `lg` the header strip that
                       named it is hidden, so it names itself. */}
-                  <Cell main={shortAddress(row.grantor)} sub="opened by" subOnly="mobile" mono />
+                  <Cell
+                    main={shortAddress(row.grantor)}
+                    sub="opened by"
+                    subOnly="mobile"
+                    mono
+                  />
 
                   <span>
                     <StatusPill status={row.status} size="sm" />
@@ -210,11 +238,16 @@ function Table({ rows, subtitle }: { rows: readonly ExplorerRow[]; subtitle: str
                   <Cell
                     main={
                       row.ethBalance > BigInt(0)
-                        ? formatTokenAmount(row.ethBalance, { symbol: "ETH", decimals: 18 })
+                        ? formatTokenAmount(row.ethBalance, {
+                            symbol: "ETH",
+                            decimals: 18,
+                          })
                         : "no ETH"
                     }
                     sub={
-                      row.erc20Count > 0 ? `+ ${plural(row.erc20Count, "ERC20")} listed` : "HeritVault"
+                      row.erc20Count > 0
+                        ? `+ ${plural(row.erc20Count, "ERC20")} listed`
+                        : "HeritVault"
                     }
                   />
                 </button>
@@ -232,8 +265,12 @@ function Table({ rows, subtitle }: { rows: readonly ExplorerRow[]; subtitle: str
 /** What the deployment adds up to, for the judge who reads one line and moves on. */
 function Totals({ rows }: { rows: readonly ExplorerRow[] }) {
   const heirs = rows.reduce((total, row) => total + row.heirCount, 0);
-  const escrowed = rows.reduce((total, row) => total + row.ethBalance, BigInt(0));
-  const count = (status: EstateStatus) => rows.filter((row) => row.status === status).length;
+  const escrowed = rows.reduce(
+    (total, row) => total + row.ethBalance,
+    BigInt(0),
+  );
+  const count = (status: EstateStatus) =>
+    rows.filter((row) => row.status === status).length;
   const unlocked = count("unlocked");
 
   return (
@@ -244,7 +281,12 @@ function Totals({ rows }: { rows: readonly ExplorerRow[] }) {
         sub={`${count("active")} active · ${count("grace")} in grace`}
         accent="bg-lavender"
       />
-      <StatBox label="heirs named" value={String(heirs)} sub="ENS subnames minted" accent="bg-pink" />
+      <StatBox
+        label="heirs named"
+        value={String(heirs)}
+        sub="ENS subnames minted"
+        accent="bg-pink"
+      />
       <StatBox
         label="escrowed"
         value={formatTokenAmount(escrowed, { symbol: "ETH", decimals: 18 })}
@@ -266,23 +308,36 @@ function Detail({ id, row }: { id: string; row: ExplorerRow }) {
   const roster = useHeirRoster(row.estateId);
 
   return (
-    <div id={id} className="border-t-2 border-dashed border-ink/25 bg-cream px-5 py-5 sm:px-6">
+    <div
+      id={id}
+      className="border-t-2 border-dashed border-ink/25 bg-cream px-5 py-5 sm:px-6"
+    >
       <div className="grid gap-5 lg:grid-cols-[1.3fr_1fr]">
         <div>
-          <p className="text-[0.72rem] font-bold tracking-wide text-muted">heirs and shares</p>
+          <p className="text-[0.72rem] font-bold tracking-wide text-muted">
+            heirs and shares
+          </p>
 
           {roster.status === "loading" ? (
             <p className="mt-2 text-sm text-muted">reading sepolia…</p>
           ) : roster.status === "error" ? (
-            <p className="mt-2 text-sm text-muted">the heir list could not be read just now.</p>
+            <p className="mt-2 text-sm text-muted">
+              the heir list could not be read just now.
+            </p>
           ) : roster.data.length === 0 ? (
             <p className="mt-2 text-sm text-muted">
-              no heirs registered yet — the grantor has opened the name but not named anyone.
+              no heirs registered yet — the grantor has opened the name but not
+              named anyone.
             </p>
           ) : (
             <ul className="mt-2.5 space-y-2">
               {roster.data.map((heir, index) => (
-                <HeirRow key={heir.label} estateLabel={row.label} heir={heir} index={index} />
+                <HeirRow
+                  key={heir.label}
+                  estateLabel={row.label}
+                  heir={heir}
+                  index={index}
+                />
               ))}
             </ul>
           )}
@@ -317,18 +372,30 @@ function HeirRow({
     <li className="card-flat flex items-center gap-3 px-3 py-2.5">
       <HeirAvatar index={index} size="md" />
       <div className="min-w-0 flex-1">
-        <p className="mono truncate text-[0.78rem] font-bold">{fullName({ label: estateLabel }, heir.label)}</p>
-        <p className="mono truncate text-[0.68rem] text-muted">{shortAddress(heir.address)}</p>
+        <p className="mono truncate text-[0.78rem] font-bold">
+          {fullName({ label: estateLabel }, heir.label)}
+        </p>
+        <p className="mono truncate text-[0.68rem] text-muted">
+          {shortAddress(heir.address)}
+        </p>
       </div>
       <ShareChip>{bpsToPercent(heir.shareBps)}</ShareChip>
     </li>
   );
 }
 
-function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+function Fact({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
-      <dt className="text-[0.72rem] font-bold tracking-wide text-muted">{label}</dt>
+      <dt className="text-[0.72rem] font-bold tracking-wide text-muted">
+        {label}
+      </dt>
       <dd className="mt-0.5">{children}</dd>
     </div>
   );
@@ -361,7 +428,11 @@ function Cell({
 }) {
   return (
     <span className="min-w-0">
-      <span className={`block truncate text-sm font-bold ${mono ? "mono" : ""}`}>{main}</span>
+      <span
+        className={`block truncate text-sm font-bold ${mono ? "mono" : ""}`}
+      >
+        {main}
+      </span>
       <span
         className={`block truncate text-[0.7rem] text-muted ${subOnly === "mobile" ? "lg:hidden" : ""}`}
       >

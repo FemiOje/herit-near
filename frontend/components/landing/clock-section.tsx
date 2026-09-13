@@ -6,17 +6,29 @@ import { CLOCK_STAGES } from "@/lib/content/landing";
 /** Active → grace → unlocked, narrated. The transition is a pure function of the clock. */
 export function ClockSection() {
   return (
-    <section id="clock" className="relative scroll-mt-24 overflow-hidden px-4 py-14 sm:px-6 sm:py-20">
-      <Sparkle className="left-[6%] top-[14%] hidden sm:block" size={24} fill="#E8635A" rotate={-20} />
-      <DotTrail className="right-[5%] bottom-[10%] hidden md:block" size={100} fill="#7B6CF6" />
+    <section
+      id="clock"
+      className="relative scroll-mt-24 overflow-hidden px-4 py-14 sm:px-6 sm:py-20"
+    >
+      <Sparkle
+        className="left-[6%] top-[14%] hidden sm:block"
+        size={24}
+        fill="#E8635A"
+        rotate={-20}
+      />
+      <DotTrail
+        className="right-[5%] bottom-[10%] hidden md:block"
+        size={100}
+        fill="#7B6CF6"
+      />
 
       <div className="relative z-10 mx-auto max-w-6xl">
         <Reveal>
           <span className="tag tag-shadow bg-lavender">the state machine</span>
-          <h2 className="mt-5 max-w-2xl">two timers, three states, no committee</h2>
+          <h2 className="mt-5 max-w-2xl">two timers, three states</h2>
           <p className="mt-4 max-w-xl text-base text-muted">
-            the transition is a pure function of the clock. herit cannot unlock your estate
-            early, and no one has to be online for it to unlock on time.
+            herit cannot unlock your estate on their own, and no one has to be
+            online for it to unlock.
           </p>
         </Reveal>
 
@@ -36,7 +48,9 @@ export function ClockSection() {
                   </div>
                 </div>
 
-                <p className="mt-5 text-sm leading-relaxed text-muted">{stage.body}</p>
+                <p className="mt-5 text-sm leading-relaxed text-muted">
+                  {stage.body}
+                </p>
 
                 <p className="mono mt-5 border-t-2 border-ink pt-3 text-xs font-bold">
                   {stage.footer}
