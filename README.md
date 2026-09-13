@@ -1,6 +1,6 @@
 # Herit
 
-> Your heirs hold ENS subnames that cannot claim anything — until you stop proving, with your face, that you are alive.
+> Your heirs hold ENS subnames that cannot claim your assets, until you(the grantor) stop proving, with your face(World Selfie Check), that you are alive.
 
 **ETHOnline 2026** · World track & ENS track · World ID Selfie Check + ENSv2 Enhanced Access Control
 
@@ -25,7 +25,7 @@ Herit replaces both halves. Proof of life becomes a World ID Selfie Check — a 
 Alice opens an estate at `alice.herit.eth` and wills 1 ETH of her 40 into it. Her check-in interval is 60 minutes, her grace period 30.
 
 1. **She registers her heirs.** `son.alice.herit.eth` gets 6000 basis points, `daughter.alice.herit.eth` gets 4000. Each is a real ENSv2 subname in a registry deployed for this estate alone. Each carries text records anyone can read: `herit.relationship` = `son`, `herit.share` = `6000`.
-2. **The claim bit is withheld.** The subnames exist and are visibly the heirs'. `HeritRolesLib.ROLE_HEIR_CLAIM` — nybble 10 of ENSv2's role bitmap — is deliberately *not* granted. `canClaim` returns `false`. That withheld bit is the inheritance.
+2. **The claim bit is withheld.** The subnames exist and are visibly the heirs'. `HeritRolesLib.ROLE_HEIR_CLAIM` — nybble 10 of ENSv2's role bitmap — is deliberately _not_ granted. `canClaim` returns `false`. That withheld bit is the inheritance.
 3. **She checks in with her face.** IDKit raises a Selfie Check. World ID returns a nullifier — stable for one human, different for everyone else. The backend salts it into a commitment and signs an EIP-712 attestation. `LivenessAttestor` on Sepolia checks the signature and binds the estate to that commitment. **First write wins.**
 4. **Her key gets stolen at minute 20.** The thief holds the private key and can sign anything. They still cannot check in: their Selfie Check produces a different nullifier, so `checkIn` reverts `LivenessAttestor__WrongHuman`. A timestamp switch would have been fooled here.
 5. **Minute 60 passes.** Anyone calls `pokeExpiry()`. Status → `Grace`. Alice can still recover: one Selfie Check inside the next 30 minutes returns the estate to `Active`. A dead-man's switch that can be undone by being alive.
@@ -73,7 +73,7 @@ sequenceDiagram
 - **Proof of life is a face, not a timestamp.** Every other dead-man's switch treats "the key signed something" as "the owner is alive". Herit binds the estate to one salted World ID nullifier on the first check-in, and every later check-in must match it. A stolen key is a different human and cannot check in. Proven by [`testStolenKeyCannotCheckIn`](https://github.com/Kelechikizito/herit/blob/f5b10ebb6b21a2f41843d3e26c94779c0b653bd2/test/integration/HeritLifecycleTest.t.sol).
 - **The heir's authority lives in ENS, not in our database.** Unlock is literally `grantRoles(heirLabel, ROLE_HEIR_CLAIM, heir)` on the deployed ENSv2 registry, and the claim gate is `hasRoles`. There is no parallel boolean in Herit's storage that ENS merely mirrors. Anyone can read the permission without touching Herit at all — [the `cast` command is below](#proof-it-ran).
 - **The role is dormant for years before it is exercisable.** The subname is minted at registration and is visibly the heir's, carrying their relationship and share as public text records — but `HEIR_REGISTRATION_ROLE_BITMAP` withholds the claim bit. An heir can be shown their inheritance, and read its terms, long before they can act on it. Address-array inheritance cannot express this at all.
-- **`canClaim` asks two questions in one call.** ENSv2's `hasRoles` requires the *whole* bitmap, so checking `ROLE_HEIR_CLAIM | ROLE_HEIR_REGISTERED` asks both "has this estate unlocked for you" and "did Herit create this subname in the first place". The second bit stops a name that acquired the claim role by some other route.
+- **`canClaim` asks two questions in one call.** ENSv2's `hasRoles` requires the _whole_ bitmap, so checking `ROLE_HEIR_CLAIM | ROLE_HEIR_REGISTERED` asks both "has this estate unlocked for you" and "did Herit create this subname in the first place". The second bit stops a name that acquired the claim role by some other route.
 - **Being alive undoes it.** Grace is a real second stage, not a constant. Alice returning from a two-week trip with no signal passes one Selfie Check and the estate is `Active` again.
 
 ## Architecture
@@ -102,7 +102,7 @@ Heir payout. `claim` ([L73](https://github.com/Kelechikizito/herit/blob/f5b10ebb
 
 ### The role bitmap ([src/libraries/HeritRolesLib.sol](https://github.com/Kelechikizito/herit/blob/f5b10ebb6b21a2f41843d3e26c94779c0b653bd2/src/libraries/HeritRolesLib.sol))
 
-ENSv2 packs 64 roles into a `uint256` as nybbles; a role at nybble *N* sits at bit `4N`, its admin counterpart 128 bits higher. `RegistryRolesLib` occupies nybbles 0–9 and 30–31. Herit claims 10 and 11, in the free range, **alongside** ENS's own roles rather than in a system beside them.
+ENSv2 packs 64 roles into a `uint256` as nybbles; a role at nybble _N_ sits at bit `4N`, its admin counterpart 128 bits higher. `RegistryRolesLib` occupies nybbles 0–9 and 30–31. Herit claims 10 and 11, in the free range, **alongside** ENS's own roles rather than in a system beside them.
 
 ```solidity
 uint256 internal constant ROLE_HEIR_CLAIM = 1 << 40;              // nybble 10
@@ -113,22 +113,22 @@ uint256 internal constant ROLE_HEIR_CLAIM_ADMIN = ROLE_HEIR_CLAIM << 128;
 
 Ethereum Sepolia (chain 11155111). All five verified on Etherscan, all deployed in block [11675256](https://sepolia.etherscan.io/block/11675256).
 
-| Contract | Address |
-|---|---|
+| Contract            | Address                                                                                                |
+| ------------------- | ------------------------------------------------------------------------------------------------------ |
 | `AccessControlGate` | [`0xA86e42C7…C63103`](https://sepolia.etherscan.io/address/0xA86e42C7250fec7C29cfA09584847B0B24C63103) |
-| `HeritRegistry` | [`0xae63470A…b76207`](https://sepolia.etherscan.io/address/0xae63470A513d3488a42cd877b7ec42f861b76207) |
-| `HeritVault` | [`0xC7EBa4BD…dae0BA`](https://sepolia.etherscan.io/address/0xC7EBa4BD6CE4c4d42C69e4Da8498911c57dae0BA) |
-| `ClaimManager` | [`0xeC3692EA…BD081c`](https://sepolia.etherscan.io/address/0xeC3692EA195EecE5370Ea781208cD98d8DBD081c) |
-| `LivenessAttestor` | [`0x6Ffe6299…4366C`](https://sepolia.etherscan.io/address/0x6Ffe62994e64c0617f4bdfD2c81C8B439324366C) |
+| `HeritRegistry`     | [`0xae63470A…b76207`](https://sepolia.etherscan.io/address/0xae63470A513d3488a42cd877b7ec42f861b76207) |
+| `HeritVault`        | [`0xC7EBa4BD…dae0BA`](https://sepolia.etherscan.io/address/0xC7EBa4BD6CE4c4d42C69e4Da8498911c57dae0BA) |
+| `ClaimManager`      | [`0xeC3692EA…BD081c`](https://sepolia.etherscan.io/address/0xeC3692EA195EecE5370Ea781208cD98d8DBD081c) |
+| `LivenessAttestor`  | [`0x6Ffe6299…4366C`](https://sepolia.etherscan.io/address/0x6Ffe62994e64c0617f4bdfD2c81C8B439324366C)  |
 
 The ENS layer, on the **frozen ENSv2 hackathon set** — not the regular Sepolia beta set, which is a different group of contracts:
 
-| Thing | Address |
-|---|---|
-| `herit.eth` grantor registry | [`0x0Aa2A7d8…E4a21`](https://sepolia.etherscan.io/address/0x0Aa2A7d858bA649B6a794E1fa07ccb97a50E4a21) |
-| `PermissionedResolver` | [`0x42fA2a15…89EBb1`](https://sepolia.etherscan.io/address/0x42fA2a1582a89E18d0a54d8dC65157172489EBb1) |
-| ENSv2 `ETHRegistry` | [`0x1d78834d…3971e`](https://sepolia.etherscan.io/address/0x1d78834d97c1d7b1a38c1dedbd1a287cfed3971e) |
-| ENSv2 `VerifiableFactory` | [`0x894bc9cc…07780`](https://sepolia.etherscan.io/address/0x894bc9cc8ff1ad96b8a288c86a8c71d662c07780) |
+| Thing                        | Address                                                                                                |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `herit.eth` grantor registry | [`0x0Aa2A7d8…E4a21`](https://sepolia.etherscan.io/address/0x0Aa2A7d858bA649B6a794E1fa07ccb97a50E4a21)  |
+| `PermissionedResolver`       | [`0x42fA2a15…89EBb1`](https://sepolia.etherscan.io/address/0x42fA2a1582a89E18d0a54d8dC65157172489EBb1) |
+| ENSv2 `ETHRegistry`          | [`0x1d78834d…3971e`](https://sepolia.etherscan.io/address/0x1d78834d97c1d7b1a38c1dedbd1a287cfed3971e)  |
+| ENSv2 `VerifiableFactory`    | [`0x894bc9cc…07780`](https://sepolia.etherscan.io/address/0x894bc9cc8ff1ad96b8a288c86a8c71d662c07780)  |
 
 Full ENSv2 address set and the selector-level audit of it: [`documents/deployments.md`](documents/deployments.md).
 
@@ -165,25 +165,25 @@ Transactions behind that state, and the live deployment's own traffic:
 
 The walkthrough that produced the state above, in order:
 
-| Step | Transaction |
-|---|---|
-| `alice.herit.eth` registered, estate registry deployed for it | [`0xddaa75b1…0ddd05f`](https://sepolia.etherscan.io/tx/0xddaa75b12acc2548e2bb3661c9b1bf918cd0d0658e2d09202661ce99a0ddd05f) |
+| Step                                                                | Transaction                                                                                                                |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `alice.herit.eth` registered, estate registry deployed for it       | [`0xddaa75b1…0ddd05f`](https://sepolia.etherscan.io/tx/0xddaa75b12acc2548e2bb3661c9b1bf918cd0d0658e2d09202661ce99a0ddd05f) |
 | `son.alice.herit.eth` minted — claim bit withheld, `canClaim` false | [`0x4dc3515a…684478f`](https://sepolia.etherscan.io/tx/0x4dc3515a3d8ba4564bd6061a1c410406cc61d9a45b93d33dc2ea63020684478f) |
-| `daughter.alice.herit.eth` minted | [`0x3f0625ae…f374c7`](https://sepolia.etherscan.io/tx/0x3f0625aef8c96012f13d18fc3642aa16a3d80a4525c17a84fa46d73f49f374c7) |
-| **Unlock: `ROLE_HEIR_CLAIM` granted to the son inside ENS** | [`0xad807167…7fa3aa`](https://sepolia.etherscan.io/tx/0xad8071675c108baa414d5840f73e4a272ba29c3d70c984270e8fed2a147fa3aa) |
-| **Same for the daughter — `canClaim` now true for both** | [`0xd0e3facd…36315d8`](https://sepolia.etherscan.io/tx/0xd0e3facd8a492051518cc8b4a57a25dea02dfe0e8aff237ebee85ec4736315d8) |
+| `daughter.alice.herit.eth` minted                                   | [`0x3f0625ae…f374c7`](https://sepolia.etherscan.io/tx/0x3f0625aef8c96012f13d18fc3642aa16a3d80a4525c17a84fa46d73f49f374c7)  |
+| **Unlock: `ROLE_HEIR_CLAIM` granted to the son inside ENS**         | [`0xad807167…7fa3aa`](https://sepolia.etherscan.io/tx/0xad8071675c108baa414d5840f73e4a272ba29c3d70c984270e8fed2a147fa3aa)  |
+| **Same for the daughter — `canClaim` now true for both**            | [`0xd0e3facd…36315d8`](https://sepolia.etherscan.io/tx/0xd0e3facd8a492051518cc8b4a57a25dea02dfe0e8aff237ebee85ec4736315d8) |
 
 And the live five-contract deployment's own traffic, from wallets other than the deployer's:
 
-| Step | Transaction |
-|---|---|
-| Five contracts deployed as one nonce sequence | [`0x029f6c7d…55cd75`](https://sepolia.etherscan.io/tx/0x029f6c7d5ad9d76e141286f22222b8d4cdf977851c48d5340acc88716955cd75) (gate) |
-| Gate given root roles on the grantor registry | [`0x1e245e76…40aaa6d`](https://sepolia.etherscan.io/tx/0x1e245e76bbeb485c4eeabd60b84299f0116b36cb66db8ac481321487640aaa6d) |
-| Gate given write roles on the resolver | [`0x091ba870…53172c`](https://sepolia.etherscan.io/tx/0x091ba870b189e85ab312f8ca81cdd49bd1c8c611a1865d751b9a0c353153172c) |
-| An heir subname minted through the live gate, from the app | [`0x6379b9ef…306b82`](https://sepolia.etherscan.io/tx/0x6379b9efae1dc1d4e0f9906a07e5dbc0d094c165305be485580a303057306b82) |
-| 0.001 ETH willed into the vault | [`0x6e859b58…051b477`](https://sepolia.etherscan.io/tx/0x6e859b58b9aea005223f69175dd97e6f5597794938af5d4a037981931051b477) |
-| The grantor taking it back out before unlock | [`0x44b82301…f4f0f081`](https://sepolia.etherscan.io/tx/0x44b82301172f68c2afe9bba33fc53e4c03d20102c081a00b35a77572f4f0f081) |
-| Timers set on a live estate (60 min interval, 30 min grace) | [`0x0e18af11…011184a`](https://sepolia.etherscan.io/tx/0x0e18af11f0d2362b06c805c73d3799290479c0aacd7e54b49b4223b99011184a) |
+| Step                                                        | Transaction                                                                                                                      |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Five contracts deployed as one nonce sequence               | [`0x029f6c7d…55cd75`](https://sepolia.etherscan.io/tx/0x029f6c7d5ad9d76e141286f22222b8d4cdf977851c48d5340acc88716955cd75) (gate) |
+| Gate given root roles on the grantor registry               | [`0x1e245e76…40aaa6d`](https://sepolia.etherscan.io/tx/0x1e245e76bbeb485c4eeabd60b84299f0116b36cb66db8ac481321487640aaa6d)       |
+| Gate given write roles on the resolver                      | [`0x091ba870…53172c`](https://sepolia.etherscan.io/tx/0x091ba870b189e85ab312f8ca81cdd49bd1c8c611a1865d751b9a0c353153172c)        |
+| An heir subname minted through the live gate, from the app  | [`0x6379b9ef…306b82`](https://sepolia.etherscan.io/tx/0x6379b9efae1dc1d4e0f9906a07e5dbc0d094c165305be485580a303057306b82)        |
+| 0.001 ETH willed into the vault                             | [`0x6e859b58…051b477`](https://sepolia.etherscan.io/tx/0x6e859b58b9aea005223f69175dd97e6f5597794938af5d4a037981931051b477)       |
+| The grantor taking it back out before unlock                | [`0x44b82301…f4f0f081`](https://sepolia.etherscan.io/tx/0x44b82301172f68c2afe9bba33fc53e4c03d20102c081a00b35a77572f4f0f081)      |
+| Timers set on a live estate (60 min interval, 30 min grace) | [`0x0e18af11…011184a`](https://sepolia.etherscan.io/tx/0x0e18af11f0d2362b06c805c73d3799290479c0aacd7e54b49b4223b99011184a)       |
 
 **What has not touched the chain yet:** no Selfie Check has driven a `LivenessAttestor.checkIn` on Sepolia. The World ID path is implemented end to end — [`app/api/worldid/verify/route.ts`](https://github.com/Kelechikizito/herit/blob/f5b10ebb6b21a2f41843d3e26c94779c0b653bd2/frontend/app/api/worldid/verify/route.ts) verifies the proof with Cloud Verify, derives the commitment and signs the attestation — and the full liveness → grace → unlock → claim cycle passes against a Sepolia fork with real EIP-712 signatures. It has not yet been run against mainnet-of-record Sepolia by a live face.
 
@@ -243,10 +243,10 @@ The properties the suite pins down, in plain English:
 
 Two tools, both run against `src/` at the deployed commit. Full triaged write-ups, finding by finding, are in [`security/static-analysis/`](security/static-analysis/).
 
-| Tool | Version | Findings | Outcome |
-|---|---|---|---|
-| [Slither](security/static-analysis/slither.md) | 0.11.5 | 45 results · 52 contracts · 101 detectors | No vulnerabilities. 1 high and 3 medium are false positives; the rest are accepted by design. |
-| [Aderyn](security/static-analysis/aderyn.md) | 0.6.8 | 8 issues · 1 high, 7 low | No vulnerabilities. The high overlaps Slither's reentrancy family; two lows are worth fixing. |
+| Tool                                           | Version | Findings                                  | Outcome                                                                                       |
+| ---------------------------------------------- | ------- | ----------------------------------------- | --------------------------------------------------------------------------------------------- |
+| [Slither](security/static-analysis/slither.md) | 0.11.5  | 45 results · 52 contracts · 101 detectors | No vulnerabilities. 1 high and 3 medium are false positives; the rest are accepted by design. |
+| [Aderyn](security/static-analysis/aderyn.md)   | 0.6.8   | 8 issues · 1 high, 7 low                  | No vulnerabilities. The high overlaps Slither's reentrancy family; two lows are worth fixing. |
 
 Every finding was checked against the source rather than passed through. The three that look worst are the three that are wrong:
 
@@ -260,13 +260,13 @@ Two findings are real and deliberately left for after the hackathon: `nonReentra
 
 `forge coverage`, contracts only. Deploy scripts and the ERC20 mocks are omitted.
 
-| File | Lines | Statements | Branches | Functions |
-|---|---|---|---|---|
-| `src/HeritVault.sol` | 92.00% (92/100) | 92.05% (81/88) | 66.67% (14/21) | 100.00% (21/21) |
-| `src/LivenessAttestor.sol` | 88.24% (45/51) | 83.64% (46/55) | 56.25% (9/16) | 75.00% (6/8) |
-| `src/AccessControlGate.sol` | 74.23% (72/97) | 78.85% (82/104) | 0.00% (0/14) | 83.33% (15/18) |
-| `src/HeritRegistry.sol` | 63.75% (102/160) | 62.58% (102/163) | 28.12% (9/32) | 70.97% (22/31) |
-| `src/ClaimManager.sol` | 62.96% (34/54) | 56.06% (37/66) | 13.33% (2/15) | 50.00% (4/8) |
+| File                           | Lines                | Statements           | Branches            | Functions           |
+| ------------------------------ | -------------------- | -------------------- | ------------------- | ------------------- |
+| `src/HeritVault.sol`           | 92.00% (92/100)      | 92.05% (81/88)       | 66.67% (14/21)      | 100.00% (21/21)     |
+| `src/LivenessAttestor.sol`     | 88.24% (45/51)       | 83.64% (46/55)       | 56.25% (9/16)       | 75.00% (6/8)        |
+| `src/AccessControlGate.sol`    | 74.23% (72/97)       | 78.85% (82/104)      | 0.00% (0/14)        | 83.33% (15/18)      |
+| `src/HeritRegistry.sol`        | 63.75% (102/160)     | 62.58% (102/163)     | 28.12% (9/32)       | 70.97% (22/31)      |
+| `src/ClaimManager.sol`         | 62.96% (34/54)       | 56.06% (37/66)       | 13.33% (2/15)       | 50.00% (4/8)        |
 | **Repo total** (incl. scripts) | **53.00%** (371/700) | **50.76%** (366/721) | **18.72%** (35/187) | **63.71%** (79/124) |
 
 Read honestly: the two contracts holding value and verifying signatures are the best covered, and **branch coverage is the weak number**. `AccessControlGate` reads 0% branches because its paths run through the fork suite, where the ENS calls it makes are not instrumented the same way — its lines are 74% covered by those same tests. The revert paths that matter most are covered as named tests rather than as branch percentages; the list under [Testing](#testing) is the accurate picture of what is actually pinned down. Raising branch coverage on `ClaimManager` and `HeritRegistry` is the first thing to do with more time.
@@ -277,19 +277,19 @@ Read honestly: the two contracts holding value and verifying signatures are the 
 
 **Unallocated shares are stranded after unlock.** Shares are not required to sum to 10000 bps, and `HeritVault.withdraw` is gated on `notUnlocked`. If a grantor allocates 90%, the remaining 10% has no path out once the estate unlocks. Truncation adds to it: `payOut` computes `(snapshot * bps) / 10000` and rounds down, returning zero rather than reverting so that one dust-sized share cannot block a whole claim. Chosen over a sweep function, which would have needed a privileged recipient in a contract that deliberately has none.
 
-**Selfie Check cannot be verified on-chain, and the obvious workaround does not apply.** The World ID Router *is* deployed on Ethereum Sepolia at `0x469449f251692e0779667583026b5a1e99512157` — verified live — but on-chain verification is `groupId = 1`, Orb credentials only. Selfie Check is Cloud Verify-only, which is exactly why it is the right credential here: an Orb proof shows a human is unique, not that they are alive today. So the backend attestor stays in the check-in path. It could be removed from the *heir claim* path, which is a one-time uniqueness gate rather than a liveness one. Noted as an option, not built.
+**Selfie Check cannot be verified on-chain, and the obvious workaround does not apply.** The World ID Router _is_ deployed on Ethereum Sepolia at `0x469449f251692e0779667583026b5a1e99512157` — verified live — but on-chain verification is `groupId = 1`, Orb credentials only. Selfie Check is Cloud Verify-only, which is exactly why it is the right credential here: an Orb proof shows a human is unique, not that they are alive today. So the backend attestor stays in the check-in path. It could be removed from the _heir claim_ path, which is a one-time uniqueness gate rather than a liveness one. Noted as an option, not built.
 
 **Herit's names are invisible in the ENS app.** The official app indexes the regular Sepolia beta set; Herit registers into the frozen hackathon set, a different group of contracts entirely. Looking up `alice.herit.eth` on the ENS website returns nothing no matter how correct the registration is. The chain is the source of truth — read the registry directly, as the commands above do.
 
 ## Track alignment
 
-| ETHOnline criterion | Where it is satisfied |
-|---|---|
-| **Technicality** | Unlock is `grantRoles` inside the deployed ENSv2 registry and the claim gate is `hasRoles` — no parallel boolean in Herit storage ([`AccessControlGate.sol#L477`](https://github.com/Kelechikizito/herit/blob/f5b10ebb6b21a2f41843d3e26c94779c0b653bd2/src/AccessControlGate.sol#L477)). A constructor cycle between the gate and the registry is broken with CREATE2 prediction rather than a setter. |
-| **Originality** | World ID used twice for two different jobs: a *recurring* liveness loop for the grantor, a *one-time* personhood gate for the heir, scoped by action so neither proof works as the other ([`LivenessAttestor.sol#L94`](https://github.com/Kelechikizito/herit/blob/f5b10ebb6b21a2f41843d3e26c94779c0b653bd2/src/LivenessAttestor.sol#L94)). The dormant-then-granted role has no equivalent in address-array inheritance. |
-| **Practicality** | Five verified contracts on Sepolia, an app at [herit-psi.vercel.app](https://herit-psi.vercel.app/), a subgraph for the activity feed, and real estates opened through the live gate by wallets other than the deployer's ([tx](https://sepolia.etherscan.io/tx/0x6379b9efae1dc1d4e0f9906a07e5dbc0d094c165305be485580a303057306b82)). Onboarding is one free transaction — Herit owns `herit.eth` and issues grantor names beneath it, so nobody buys a `.eth` name to start. |
-| **Usability** | Setup, dashboard, heirs and claim screens, with the countdown read live from `deadlinesOf` rather than from an indexer, so an on-screen timer can never go stale. Heir subnames resolve as names, not addresses. |
-| **WOW factor** | A permission inside ENS itself flips from false to true because a human stopped proving they were alive — and a judge can read it with one `cast call` against a contract Herit does not control. |
+| ETHOnline criterion | Where it is satisfied                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Technicality**    | Unlock is `grantRoles` inside the deployed ENSv2 registry and the claim gate is `hasRoles` — no parallel boolean in Herit storage ([`AccessControlGate.sol#L477`](https://github.com/Kelechikizito/herit/blob/f5b10ebb6b21a2f41843d3e26c94779c0b653bd2/src/AccessControlGate.sol#L477)). A constructor cycle between the gate and the registry is broken with CREATE2 prediction rather than a setter.                                                                        |
+| **Originality**     | World ID used twice for two different jobs: a _recurring_ liveness loop for the grantor, a _one-time_ personhood gate for the heir, scoped by action so neither proof works as the other ([`LivenessAttestor.sol#L94`](https://github.com/Kelechikizito/herit/blob/f5b10ebb6b21a2f41843d3e26c94779c0b653bd2/src/LivenessAttestor.sol#L94)). The dormant-then-granted role has no equivalent in address-array inheritance.                                                     |
+| **Practicality**    | Five verified contracts on Sepolia, an app at [herit-psi.vercel.app](https://herit-psi.vercel.app/), a subgraph for the activity feed, and real estates opened through the live gate by wallets other than the deployer's ([tx](https://sepolia.etherscan.io/tx/0x6379b9efae1dc1d4e0f9906a07e5dbc0d094c165305be485580a303057306b82)). Onboarding is one free transaction — Herit owns `herit.eth` and issues grantor names beneath it, so nobody buys a `.eth` name to start. |
+| **Usability**       | Setup, dashboard, heirs and claim screens, with the countdown read live from `deadlinesOf` rather than from an indexer, so an on-screen timer can never go stale. Heir subnames resolve as names, not addresses.                                                                                                                                                                                                                                                              |
+| **WOW factor**      | A permission inside ENS itself flips from false to true because a human stopped proving they were alive — and a judge can read it with one `cast call` against a contract Herit does not control.                                                                                                                                                                                                                                                                             |
 
 **World track:** Selfie Check is the whole thesis, not a signup gate. A recurring liveness proof is the one thing a `lastActive` timestamp cannot give, and the salted per-estate nullifier commitment is what turns "a proof was presented" into "the same human presented it".
 
@@ -297,20 +297,20 @@ Read honestly: the two contracts holding value and verifying signatures are the 
 
 ## Tech stack
 
-| Layer | Choice |
-|---|---|
-| Contracts | Solidity 0.8.30, Foundry, OpenZeppelin (EIP-712, ECDSA, ReentrancyGuard) |
-| Naming | ENSv2 frozen hackathon set on Sepolia — `PermissionedRegistry`, `UserRegistry`, `PermissionedResolver`, `VerifiableFactory` |
-| Identity | World ID Selfie Check via IDKit + Cloud Verify, bridged to Sepolia by an EIP-712 attestation |
-| Frontend | Next.js 16.3.4, React 19, wagmi 3, viem 2, ensjs 4, Tailwind 4 |
-| Indexing | The Graph subgraph (`frontend/subgraph`) for the activity feed; every timer and balance still read live from Sepolia |
-| Automation | `pokeExpiry()` is permissionless — unlock depends on no single party remembering to poke |
+| Layer      | Choice                                                                                                                      |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Contracts  | Solidity 0.8.30, Foundry, OpenZeppelin (EIP-712, ECDSA, ReentrancyGuard)                                                    |
+| Naming     | ENSv2 frozen hackathon set on Sepolia — `PermissionedRegistry`, `UserRegistry`, `PermissionedResolver`, `VerifiableFactory` |
+| Identity   | World ID Selfie Check via IDKit + Cloud Verify, bridged to Sepolia by an EIP-712 attestation                                |
+| Frontend   | Next.js 16.3.4, React 19, wagmi 3, viem 2, ensjs 4, Tailwind 4                                                              |
+| Indexing   | The Graph subgraph (`frontend/subgraph`) for the activity feed; every timer and balance still read live from Sepolia        |
+| Automation | `pokeExpiry()` is permissionless — unlock depends on no single party remembering to poke                                    |
 
 ## What I'd build next
 
 **Remove the attestor from the claim path.** The heir claim is a one-time uniqueness gate, so `WorldIDRouter.verifyProof` on Sepolia can do it on-chain with an Orb proof. Check-in keeps the Selfie Check attestation because liveness has no on-chain equivalent. This halves the trust surface without waiting for anything.
 
-**A Safe module instead of a vault.** The explicit escrow was chosen for a clean, demoable custody boundary. The real product inherits the grantor's *existing* wallet, with the claim role becoming a Safe module permission.
+**A Safe module instead of a vault.** The explicit escrow was chosen for a clean, demoable custody boundary. The real product inherits the grantor's _existing_ wallet, with the claim role becoming a Safe module permission.
 
 **A guardian committee with a time-boxed veto.** A small set of grantor-nominated, World ID-verified humans who can pause an unlock they believe is wrong — a veto with an expiry, not indefinite discretion, so it cannot become a second way to freeze an estate.
 
