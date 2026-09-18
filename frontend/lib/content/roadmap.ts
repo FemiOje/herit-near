@@ -139,6 +139,7 @@ export const PHASES: readonly {
     items: [
       "a legal wrapper — pairing the on-chain estate with a jurisdiction-aware document, so an unlock is recognised off-chain too",
       "an estate-planner and fiduciary channel: the professionals families already trust with this decision",
+      "on-chain insurance — cover a grantor can buy against a wrongful unlock, underwritten against the check-in record the contracts already keep, so a family is made whole even when the timer was the thing that failed",
       "custodian and exchange integrations, so assets that are not self-custodied can still name an heir",
     ],
   },
