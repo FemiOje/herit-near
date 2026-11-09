@@ -19,7 +19,7 @@
 | Chain path | **Native Rust port** (near-sdk + cargo-near), **not Aurora** | Only the **NEAR integration built in the window is judged** (rules Q-002/Q-004). An EVM redeploy on Aurora counts as "the old project as-is". It would also break: the ENSv2 frozen set exists only on Sepolia. |
 | Network | **NEAR testnet** for contracts. A **mainnet** account only for the prize payout. | Testnet is accepted for every track (Q-010). Mainnet Global Contracts burn real NEAR. |
 | Shape | **1 factory + 1 estate contract per estate**, with the estate code published once as a **Global Contract (by hash)** | NEAR's account model replaces ENS names and the five-contract immutable ring. |
-| Naming | **`herit.testnet` → `alice.herit.testnet` → `son.alice.herit.testnet`** | The same three levels as the Sepolia ENS tree, except that every level is a real NEAR account. |
+| Naming | **`herit-near.testnet` → `alice.herit-near.testnet` → `son.alice.herit-near.testnet`** | The same three levels as the Sepolia ENS tree, except that every level is a real NEAR account. |
 | Attestor | **OutLayer** TEE worker, with a local signer as fallback | Partner tech, and it removes the private key from the backend (§7). |
 | Rule | **Partner tech first, where a feature needs it** | See §2.4. Custom code or a non-partner service only when no partner covers the need. |
 
@@ -59,7 +59,7 @@ request-changes process, so the live file wins where they differ.
 
 | Herit on Sepolia | Herit on NEAR | What gets better |
 | --- | --- | --- |
-| ENS hierarchy `herit.eth → alice.herit.eth → son.alice.herit.eth` in a separate registry | **Native account hierarchy**: `herit.testnet → alice.herit.testnet → son.alice.herit.testnet`. Each heir is a **sub-account of their estate**, created by the estate and controlled by the heir's own key. | Human-readable identity is built into the protocol, with no frozen-registry dependency. The Sepolia problem "names invisible in the ENS app" disappears. |
+| ENS hierarchy `herit.eth → alice.herit.eth → son.alice.herit.eth` in a separate registry | **Native account hierarchy**: `herit-near.testnet → alice.herit-near.testnet → son.alice.herit-near.testnet`. Each heir is a **sub-account of their estate**, created by the estate and controlled by the heir's own key. | Human-readable identity is built into the protocol, with no frozen-registry dependency. The Sepolia problem "names invisible in the ENS app" disappears. |
 | `ROLE_HEIR_CLAIM` bit granted on an ENSv2 subname | **Soulbound dynamic NEP-171 heir credential** minted by the estate. Its metadata is computed live: `locked → claimable → claimed`. | Every NEAR wallet and explorer renders the credential, which is the core story for the NFT track. |
 | Five contracts holding each other as `immutable`s, so rotating the attestor key means redeploying all five | **One estate contract per estate account**, deployed **keyless** (no access keys), from immutable Global Contract code | Immutability comes from NEAR's account model. There is no cross-contract trust ring, and estates are isolated from each other and sharded. |
 | `HeritVault` with ETH + ERC20 | The estate account escrows **NEAR + NEP-141** tokens (e.g. USDC) | Stablecoins support the Real-World Money track. |
@@ -74,21 +74,21 @@ the rules say is not judged.
 ### 2.2 Contracts
 
 ```
-herit.testnet                     ← herit-factory  (regular deploy; upgradable during the hackathon)
-│   open_estate("alice", ...)  ── creates ──►  alice.herit.testnet
+herit-near.testnet                     ← herit-factory  (regular deploy; upgradable during the hackathon)
+│   open_estate("alice", ...)  ── creates ──►  alice.herit-near.testnet
 │                                              │  uses Global Contract <estate code hash>
 │                                              │  herit-estate: state machine + vault + attestor + NEP-171
 │                                              │
 │                                              │  add_heir("son", <heir public key>, ...)  ── creates ──►
-│                                              └─ son.alice.herit.testnet
+│                                              └─ son.alice.herit-near.testnet
 │                                                 the heir's own account; only the heir holds a key to it
 herit-code-xyz.testnet            ← publisher of the Global Contract (by hash ⇒ immutable code)
 mock-usdc-xyz.testnet             ← NEP-141 test token for the demo (testnet)
 ```
 
 **Each level has to create the next.** NEAR only lets an account create its own direct sub-accounts, so the
-factory creates `alice.herit.testnet`, and `son.alice.herit.testnet` can only come from the estate contract at
-`alice.herit.testnet`. A keyless estate can still do this, because the contract issues the create-account action
+factory creates `alice.herit-near.testnet`, and `son.alice.herit-near.testnet` can only come from the estate contract at
+`alice.herit-near.testnet`. A keyless estate can still do this, because the contract issues the create-account action
 itself. The grantor signs in from their normal wallet (`alice-xyz.testnet` in this guide), not from the estate.
 
 **`herit-factory`**
@@ -116,7 +116,7 @@ From `AccessControlGate`, `openEstate` and `estatesOfGrantor` move to the factor
 `unlockHeir`, `writeShareRecord`, `renewEstate`, `predictEstateRegistry` and `estateRegistryOf` have no equivalent:
 unlock is computed from `pending_status`, shares live in contract state, NEAR accounts don't expire, and an account's
 name is its address. `getMessageHash` moves off-chain into the attestor, and `isAvailable` becomes a frontend
-`view_account` on `<label>.herit.testnet`.
+`view_account` on `<label>.herit-near.testnet`.
 
 ### 2.3 Work for the hackathon window (what the judges see as new)
 
@@ -174,22 +174,22 @@ Optional: `npx skills add near/agent-skills` adds NEAR's own agent skills. `near
 
 ## 4. Accounts
 
-Testnet named accounts are first-come, so **claim `herit.testnet` first**. It was unclaimed on 2026-11-09. If
+Testnet named accounts are first-come, so **claim `herit-near.testnet` first**. It was unclaimed on 2026-11-09. If
 someone takes it, every name below it changes. The helper accounts aren't part of the hierarchy, so pick a team
 suffix for them once, e.g. `xyz`.
 
 ```bash
 export NET=testnet
-export FACTORY=herit.testnet              # factory contract; estates become <label>.herit.testnet
+export FACTORY=herit-near.testnet              # factory contract; estates become <label>.herit-near.testnet
 export CODE=herit-code-xyz.testnet        # publishes the global estate code
 export TOKEN=mock-usdc-xyz.testnet        # NEP-141 test token
-export GRANTOR=alice-xyz.testnet          # demo grantor's wallet (the estate itself is alice.herit.testnet)
+export GRANTOR=alice-xyz.testnet          # demo grantor's wallet (the estate itself is alice.herit-near.testnet)
 export FUNDER1=herit-funder1-xyz.testnet  # spare faucet accounts for topping up $CODE
 export FUNDER2=herit-funder2-xyz.testnet
 
 # Heir accounts. Do NOT create these here: add_heir creates them (§8.4).
-export HEIR1=son.alice.$FACTORY           # son.alice.herit.testnet
-export HEIR2=daughter.alice.$FACTORY      # daughter.alice.herit.testnet
+export HEIR1=son.alice.$FACTORY           # son.alice.herit-near.testnet
+export HEIR2=daughter.alice.$FACTORY      # daughter.alice.herit-near.testnet
 
 for A in $FACTORY $CODE $TOKEN $GRANTOR $FUNDER1 $FUNDER2; do
   near account create-account sponsor-by-faucet-service "$A" \
@@ -465,7 +465,7 @@ impl Estate {
         log_event("configured", &format!(r#"{{"interval_sec":{check_in_interval_sec},"grace_sec":{grace_sec}}}"#));
     }
 
-    /// Creates `<label>.<this estate>` (son.alice.herit.testnet) as a real account the heir controls.
+    /// Creates `<label>.<this estate>` (son.alice.herit-near.testnet) as a real account the heir controls.
     /// The heir generates `public_key` themselves, so the grantor never holds the private half.
     #[payable] // attached NEAR pays the credential's storage + HEIR_ACCOUNT_SEED; the surplus is refunded
     pub fn add_heir(&mut self, label: String, public_key: PublicKey, relationship: String, default_bps: u16) -> Promise {
@@ -747,7 +747,7 @@ impl Estate {
             token_id: token_id.clone(),
             owner_id: h.account_id.clone(),
             metadata: Some(TokenMetadata {
-                title: Some(h.account_id.to_string()), // son.alice.herit.testnet
+                title: Some(h.account_id.to_string()), // son.alice.herit-near.testnet
                 description: Some(format!("Heir credential · {} · {state}", h.relationship)),
                 extra: Some(format!(
                     r#"{{"relationship":"{}","share_bps":{},"state":"{state}"}}"#,
@@ -1016,7 +1016,7 @@ use host::outlayer::signing_keys::api as keys;
 static OUTLAYER_MANIFEST: [u8; include_bytes!("../manifest.json").len()] = *include_bytes!("../manifest.json");
 
 const DOMAIN: &str = "herit-near:v1";
-const ESTATE_SUFFIX: &str = ".herit.testnet"; // this worker only attests for estates under the factory
+const ESTATE_SUFFIX: &str = ".herit-near.testnet"; // this worker only attests for estates under the factory
 const RP_ID: &str = "rp_REPLACE_ME"; // WLD_RP_ID. Public, so it lives in the code rather than the environment
 const VERIFY_BASE: &str = "https://developer.world.org/api/v4/verify";
 const TTL_NS: u64 = 15 * 60 * 1_000_000_000; // under the contract's 30-minute cap
@@ -1366,7 +1366,7 @@ newkey() { (cd frontend && node -e 'const {KeyPair}=require("near-api-js");const
 read HEIR1_SK HEIR1_PK < <(newkey)
 read HEIR2_SK HEIR2_PK < <(newkey)
 
-# add_heir creates son.alice.herit.testnet and daughter.alice.herit.testnet (0.15 NEAR covers the 0.1 seed + storage)
+# add_heir creates son.alice.herit-near.testnet and daughter.alice.herit-near.testnet (0.15 NEAR covers the 0.1 seed + storage)
 call $ESTATE add_heir "{\"label\":\"son\",\"public_key\":\"$HEIR1_PK\",\"relationship\":\"son\",\"default_bps\":6000}" '0.15 NEAR' '' $GRANTOR
 call $ESTATE add_heir "{\"label\":\"daughter\",\"public_key\":\"$HEIR2_PK\",\"relationship\":\"daughter\",\"default_bps\":4000}" '0.15 NEAR' '' $GRANTOR
 
@@ -1387,7 +1387,7 @@ view $ESTATE status_of                                              # "Unlocked"
 ATT=$(node frontend/scripts/sign-attestation.mjs --estate $ESTATE --subject $HEIR1 --action 1 --human son --label son)
 call $ESTATE claim "$(echo "$ATT" | jq '. + {label:"son"}')" '0 NEAR' '200 Tgas' $HEIR1
 
-# Switch future estates to the OutLayer key from §7.2 (export OUTLAYER_ATTESTOR_PK first). alice.herit.testnet keeps the dev attestor forever,
+# Switch future estates to the OutLayer key from §7.2 (export OUTLAYER_ATTESTOR_PK first). alice.herit-near.testnet keeps the dev attestor forever,
 # so treat it as a test estate and open real demo estates after this line.
 call $FACTORY set_attestor "{\"attestor_pk\":\"$OUTLAYER_ATTESTOR_PK\"}" '0 NEAR' '' $FACTORY
 ```
@@ -1395,7 +1395,7 @@ call $FACTORY set_attestor "{\"attestor_pk\":\"$OUTLAYER_ATTESTOR_PK\"}" '0 NEAR
 **For judges,** point the README's reproduction steps at `cargo test --test lifecycle`. It runs free in a local
 sandbox with its own generated key, so reproducing the flow doesn't need your dev key or a real Selfie Check.
 
-Inspect everything on <https://testnet.nearblocks.io/address/alice.herit.testnet>. Paste these exact
+Inspect everything on <https://testnet.nearblocks.io/address/alice.herit-near.testnet>. Paste these exact
 transaction links into the README's "Proof it ran" section, as the Sepolia README does today.
 
 ---
@@ -1410,7 +1410,7 @@ Read `frontend/node_modules/next/dist/docs/` first, per `frontend/AGENTS.md`.
 | `useReadContract` | `new JsonRpcProvider({ url: "https://test.rpc.fastnear.com" }).callFunction({ contractId, method, args })` from `near-api-js` |
 | `@ensdomains/ensjs` name resolution | Native NEAR account ids (validate with `/^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/`, 2–64 chars) |
 | Heir address input on the add-heir form | A label plus the heir's **public key**. The heir generates the key on their own device, then imports the private key into a wallet that supports private-key import once `add_heir` lands. |
-| Heir → estate lookup | Strip the first segment of the heir's account id: `son.alice.herit.testnet` → `alice.herit.testnet` |
+| Heir → estate lookup | Strip the first segment of the heir's account id: `son.alice.herit-near.testnet` → `alice.herit-near.testnet` |
 | `lib/estate/use-all-estates.ts` (subgraph) | Factory `estates_count` + `estates(from_index, limit)`, paged back from the end for newest first |
 | `lib/estate/use-activity.ts` (subgraph) | `GET /api/activity?estate=<id>`, below |
 | `ATTESTOR_PRIVATE_KEY`, `NULLIFIER_SALT` | `OUTLAYER_API`, `OUTLAYER_PROJECT`, `OUTLAYER_PAYMENT_KEY` (§7) |
@@ -1485,8 +1485,8 @@ and status stay live contract reads, as they were on Sepolia.
 9. **`ft_transfer` needs exactly 1 yoctoNEAR attached** (the security pattern that forces a full-access-key signature).
 10. **Keyless means final.** Estates have no access keys, so code bugs are permanent per estate. This is the same trade-off as the Sepolia `immutable`s. Keep the **factory** keyed during the hackathon so you can redeploy it, and publish a fresh global hash for each estate-code fix. Old estates keep the old code.
 11. **Global by hash vs by account.** By hash = immutable (chosen here, matching Herit's trust model). By account = the publisher can upgrade every estate at once, which reintroduces a privileged key. Say this explicitly in the README; judges care.
-12. **Account id rules.** Lowercase `[a-z0-9_-]`, segments separated by `.`, 2–64 chars total. The full `son.alice.herit.testnet` must fit: `.herit.testnet` takes 14 chars, leaving 50 for `<heir>.<estate>`.
-13. **Only the direct parent can create a sub-account.** `herit.testnet` cannot create `son.alice.herit.testnet`, and neither can the grantor's wallet. Only the contract at `alice.herit.testnet` can, which is why `add_heir` does it.
+12. **Account id rules.** Lowercase `[a-z0-9_-]`, segments separated by `.`, 2–64 chars total. The full `son.alice.herit-near.testnet` must fit: `.herit-near.testnet` takes 14 chars, leaving 50 for `<heir>.<estate>`.
+13. **Only the direct parent can create a sub-account.** `herit-near.testnet` cannot create `son.alice.herit-near.testnet`, and neither can the grantor's wallet. Only the contract at `alice.herit-near.testnet` can, which is why `add_heir` does it.
 14. **A lost heir key has no recovery.** The estate holds no key to the heir's account and can't add one later. Before unlock, the grantor can `remove_heir` and add a replacement under a new label. After unlock, nothing can rescue that heir's share, so the frontend should make heirs back up their key before the grantor submits `add_heir`.
 15. **The attestor is fixed per estate.** Each estate copies `attestor_pk` when it opens and is keyless, so `set_attestor` only affects new estates. Deleting and recreating the OutLayer project changes its key, which would strand every estate tied to the old one.
 16. **NEAR Lake is retired, and NearBlocks v1 is gone on testnet.** Older tutorials still point to both. NearBlocks v3 also renames paths (`/account/` → `/accounts/`).
@@ -1537,7 +1537,7 @@ Add a second CI job to `.github/workflows/test.yml`: `rustup target add wasm32-u
 
 | Day | Goal | Done when |
 | --- | --- | --- |
-| **Mon 9** | Tag `pre-hackathon`, add LICENSE, upgrade tools (§3), claim `herit.testnet`, `near/` scaffold, estate core with unit tests | The §6.5 unit tests pass |
+| **Mon 9** | Tag `pre-hackathon`, add LICENSE, upgrade tools (§3), claim `herit-near.testnet`, `near/` scaffold, estate core with unit tests | The §6.5 unit tests pass |
 | **Tue 10** | **OutLayer spike (§7.4, 3 h maximum)**, then NFT credential, NEP-141 path, liveness-gated withdraw, sandbox lifecycle test | Spike passes or the fallback is chosen; `cargo test --test lifecycle` is green |
 | **Wed 11** | Factory, Global Contract publish, testnet deploy, CLI smoke run (§8.4), `set_attestor` | Testnet NearBlocks links for every step |
 | **Thu 12** | Verify route, frontend on near-connect, estate list and activity feed, deploy to Vercel | Grantor and heir flows work in the browser with a real Selfie Check |
