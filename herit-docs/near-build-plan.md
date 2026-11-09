@@ -1,0 +1,56 @@
+# Herit on NEAR: Guided Build Plan
+
+Companion to [near-deployment-guide.md](near-deployment-guide.md). That document says what Herit on NEAR is and holds the starter code; this one tracks what gets built, in what order, and who writes each piece.
+
+**You write the two Rust contracts. Claude explains, reviews and unblocks.** Claude writes everything else: scaffolding, the OutLayer worker, sandbox tests, deploy scripts, the frontend and the README.
+
+**Checkpoints are added one at a time.** Each has its own guide in [`checkpoints/`](checkpoints/), written only after the previous one is finished and verified.
+
+Each checkpoint guide says:
+- **Goal:** what gets built and why;
+- **Understand first:** ideas to learn before starting;
+- **Write:** what to write;
+- **Check:** commands to run;
+- **Verified at the stop:** what Claude checks before we move on.
+
+Deadline: **2026-11-14 23:59 UTC**. Aim to submit by 12:00 UTC.
+
+## How we test (as we build, never at the end)
+
+- **You write unit tests for every method in the same checkpoint you write the method.** They live at the bottom of each `lib.rs` in `#[cfg(test)] mod tests` and use `testing_env!` to fake the caller, the time and attached NEAR (like `vm.prank`/`vm.warp`/`msg.value` in Foundry).
+- **Unit tests can't run cross-contract calls, sub-account creation or callbacks after a real failure.** Where a checkpoint uses them, Claude adds a **sandbox test** at that same checkpoint: a real local NEAR node, so you see it working before moving on.
+- **Claude writes the fuzz and invariant tests at that same checkpoint,** using `proptest`: fuzz tests for single methods, invariant tests as random call sequences with the invariants asserted after each call.
+- **Every contract checkpoint ends green:** build + `cargo test` pass, with no warnings from `cargo clippy`.
+
+---
+
+## Progress
+
+- [ ] 1: [Baseline, tools, accounts](checkpoints/01-baseline-tools-accounts.md) (you; Claude helps if you get stuck)
+
+---
+
+## Starting state
+
+Checked in the repo on 2026-11-09:
+
+- **No NEAR code yet.** There is no `near/` folder. The guide's §6 contracts type-check for wasm, and the §7 worker type-checks natively, but neither has been deployed or run.
+- **Tools:** Rust 1.96, the `wasm32-unknown-unknown` target and Docker 29.9 are installed. `cargo-near` is 0.22 and NEAR CLI 0.30.1, both behind the guide's pins. `wasm32-wasip2` is not installed.
+- **Frontend:** none on `kaykay`. The ETHGlobal app (Next.js 16.3.4, `wagmi`, `viem`, `@ensdomains/ensjs`, a subgraph) remains on `main` for reference.
+- **Repo:** no `LICENSE` and no git tags. `kaykay` holds only the NEAR docs; the Foundry project remains on `main`.
+- **Accounts:** `herit.testnet` was unclaimed on 2026-11-09.
+
+---
+
+## Decisions taken
+
+| Question | Decision |
+|---|---|
+| Who writes what | You: the 2 contracts. Claude: everything else |
+| Network | NEAR testnet; a mainnet account only for the prize payout |
+| Naming | `herit.testnet` → `alice.herit.testnet` → `son.alice.herit.testnet`, every level a real account |
+| Partner tech | Used first, wherever a feature needs it (guide §2.4) |
+| Keys | macOS Keychain through `save-to-keychain`; never plaintext files or seed phrases on disk |
+| ETHGlobal code | Deleted from the `kaykay` branch up front; it stays on `main`. The `pre-hackathon` tag keeps it recoverable and the diff valid |
+| Branch | Build and push on `kaykay` |
+| Tracks | `nfts`, `realworld`, `open` |

@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "world-docs": {
-      "type": "http",
-      "url": "https://docs.world.org/mcp"
-    }
-  }
-}
