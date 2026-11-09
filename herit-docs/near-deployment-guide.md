@@ -227,7 +227,8 @@ near/
 │   ├── herit-factory/
 │   └── mock-ft/               # copy of near-sdk-rs/examples/fungible-token, renamed
 ├── attestor-worker/           # OutLayer TEE worker (§7); separate from the workspace
-├── tests/                     # near-workspaces integration tests
+├── tests/                     # its own package: near-workspaces sandbox and fork tests
+│   ├── Cargo.toml
 │   └── lifecycle.rs
 └── scripts/
     └── code-hash.py           # base58(sha256(wasm)) for use_global_contract
@@ -240,7 +241,7 @@ frontend/scripts/sign-attestation.mjs   # DEV ONLY: mints test attestations with
 ```toml
 [workspace]
 resolver = "2"
-members = ["contracts/herit-estate", "contracts/herit-factory", "contracts/mock-ft"]
+members = ["contracts/herit-estate", "contracts/herit-factory", "contracts/mock-ft", "tests"]
 exclude = ["attestor-worker"]   # different target (wasm32-wasip2)
 
 [workspace.dependencies]
@@ -275,10 +276,7 @@ near-contract-standards = { workspace = true }
 
 [dev-dependencies]
 near-sdk = { workspace = true, features = ["unit-testing"] }
-near-workspaces = "0.24.0"
-tokio = { version = "1", features = ["full"] }
-anyhow = "1"
-serde_json = "1"
+proptest = "1"
 
 [package.metadata.near.reproducible_build]
 # Copy the current image + digest from near-sdk-rs/examples/*/Cargo.toml at tag near-sdk-v5.30.1
@@ -290,6 +288,10 @@ container_build_command = ["cargo", "near", "build", "non-reproducible-wasm", "-
 ```
 
 `herit-factory/Cargo.toml` is the same without `near-contract-standards`.
+
+`near/tests/Cargo.toml` is a separate package with `publish = false`, `autotests = false`, one `[[test]]` entry per
+test file, and `near-workspaces = "0.24.0"`, `tokio`, `anyhow` and `serde_json` as dev-dependencies. A workspace root
+can't own tests, so without this package nothing in `near/tests/` compiles.
 
 ---
 
