@@ -26,7 +26,7 @@ Deadline: **2026-11-14 23:59 UTC**. Aim to submit by 12:00 UTC.
 
 ## Progress
 
-- [ ] 1: [Baseline, tools, accounts](checkpoints/01-baseline-tools-accounts.md) (you; Claude helps if you get stuck)
+- [x] 1: [Baseline, tools, accounts](checkpoints/01-baseline-tools-accounts.md)
 
 ---
 
@@ -38,7 +38,7 @@ Checked in the repo on 2026-11-09:
 - **Tools:** Rust 1.96, the `wasm32-unknown-unknown` target and Docker 29.9 are installed. `cargo-near` is 0.22 and NEAR CLI 0.30.1, both behind the guide's pins. `wasm32-wasip2` is not installed.
 - **Frontend:** none on `kaykay`. The ETHGlobal app (Next.js 16.3.4, `wagmi`, `viem`, `@ensdomains/ensjs`, a subgraph) remains on `main` for reference.
 - **Repo:** no `LICENSE` and no git tags. `kaykay` holds only the NEAR docs; the Foundry project remains on `main`.
-- **Accounts:** `herit.testnet` was unclaimed on 2026-11-09.
+- **Accounts:** `herit-near.testnet` and the helper accounts (suffix `kaykay`) were created on 2026-11-09, with keys in Keychain.
 
 ---
 
@@ -48,9 +48,12 @@ Checked in the repo on 2026-11-09:
 |---|---|
 | Who writes what | You: the 2 contracts. Claude: everything else |
 | Network | NEAR testnet; a mainnet account only for the prize payout |
-| Naming | `herit.testnet` → `alice.herit.testnet` → `son.alice.herit.testnet`, every level a real account |
+| Naming | `herit-near.testnet` → `alice.herit-near.testnet` → `son.alice.herit-near.testnet`, every level a real account |
+| Factory account | `herit-near.testnet`, created and signed by the CLI, because Meteor blocks deploys from websites |
 | Partner tech | Used first, wherever a feature needs it (guide §2.4) |
 | Keys | macOS Keychain through `save-to-keychain`; never plaintext files or seed phrases on disk |
 | ETHGlobal code | Deleted from the `kaykay` branch up front; it stays on `main`. The `pre-hackathon` tag keeps it recoverable and the diff valid |
 | Branch | Build and push on `kaykay` |
+| Demo token | Our own NEP-141 mock (`mock-usdc-<suffix>.testnet`), not Circle USDC |
+| Non-native tech | Not used, with one exception: World ID Selfie Check, called from the OutLayer worker, because no confirmed NEAR-native option proves recurring liveness |
 | Tracks | `nfts`, `realworld`, `open` |

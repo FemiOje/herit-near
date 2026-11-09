@@ -2,12 +2,12 @@
 
 Part of the [build plan](../near-build-plan.md). Toolchain pins and account details come from [the deployment guide](../near-deployment-guide.md), §3 and §4.
 
-**Status:** in progress (`herit.testnet` claimed in Meteor on 2026-11-09)
+**Status:** done (2026-11-09)
 **Who:** you; Claude helps with anything you get stuck on
 
 ## Goal
 
-Protect the old code, get the tools to the pinned versions, and own `herit.testnet` before anyone else does.
+Protect the old code, get the tools to the pinned versions, and own `herit-near.testnet` before anyone else does.
 
 ## Understand first
 
@@ -15,7 +15,7 @@ Protect the old code, get the tools to the pinned versions, and own `herit.testn
 - **A NEAR account is a name plus access keys.** Unlike an Ethereum address, the name is the identity, and its keys can be added or removed.
 - **`save-to-keychain` stores the key in macOS Keychain,** the equivalent of a Foundry keystore.
 - **If the CLI warns that it fell back to the legacy keychain, the key is in a plaintext file.** Stop and sort that out before creating more accounts.
-- **Testnet names are first-come.** If someone takes `herit.testnet`, every name below it changes, so claim it first.
+- **Testnet names are first-come.** If someone takes `herit-near.testnet`, every name below it changes, so claim it first.
 
 ## Steps
 
@@ -31,27 +31,26 @@ Then add an MIT `LICENSE` at the repo root.
 ### Tools
 
 ```bash
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/near-cli-rs/releases/latest/download/near-cli-rs-installer.sh | sh
+npm install -g near-cli-rs@0.31.1   # the current 0.30.1 is an npm global, so upgrade it the same way
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/cargo-near/releases/latest/download/cargo-near-installer.sh | sh
 rustup target add wasm32-wasip2
 npx skills add near/agent-skills
 ```
 
-The pins are NEAR CLI **0.31.1** and `cargo-near` **0.23.0**. The installers fetch the latest release, so check the versions afterwards.
+The pins are NEAR CLI **0.31.1** and `cargo-near` **0.23.0**. The `cargo-near` installer fetches the latest release, so check the versions afterwards.
 
-### `herit.testnet`: done in Meteor, two follow-ups
+### The factory account: `herit-near.testnet`
 
-The account exists with one full-access key (`ed25519:3fK6Wori2bZemzCHdXGnWoHVRcjzk58yLU2MCpaRDjmx`). On 2026-11-09 its balance was **0 NEAR**.
+The factory must be deployed by the CLI, so its account has to be created by the CLI. A sub-account can only be created by its parent, so a factory hosted elsewhere couldn't create `alice.<name>` under a wallet-owned name.
 
-1. **Get the key into the CLI.** Deploys are signed from the CLI, so run the import with no further arguments and answer the prompts:
+The account was created and funded from a helper, because the faucet returned `429 Too Many Requests` after several accounts in one day:
 
-   ```bash
-   near account import-account
-   ```
+```bash
+near account create-account fund-myself herit-near.testnet '5 NEAR' autogenerate-new-keypair \
+  save-to-keychain sign-as herit-funder1-kaykay.testnet network-config testnet sign-with-keychain send
+```
 
-   Choose `using-seed-phrase` or `using-private-key`, depending on what Meteor exports, then save to Keychain. Enter the secret only at the hidden prompt. Don't pass it as a command argument, because that writes it to shell history. Never paste it into chat.
-
-2. **Fund it.** Send testnet NEAR from [near-faucet.io](https://near-faucet.io) or from a helper account. About 5 NEAR is a rough starting amount; the real need depends on the factory's wasm size.
+**Why not the first name, `herit` + `.testnet`, in Meteor?** Meteor blocks websites from adding a full-access key and from deploying a contract (both tested on 2026-11-09, Approve disabled), and we chose not to export a Meteor secret. That account stays in Meteor, unused, with 25 NEAR that can be sent to any helper with a normal transfer.
 
 ### Create the helper accounts
 
@@ -71,7 +70,7 @@ for A in $CODE $TOKEN $GRANTOR $FUNDER1 $FUNDER2; do
 done
 ```
 
-Don't create the heir accounts (`son.alice.herit.testnet`, `daughter.alice.herit.testnet`). The estate contract creates them through `add_heir`.
+Don't create the heir accounts (`son.alice.herit-near.testnet`, `daughter.alice.herit-near.testnet`). The estate contract creates them through `add_heir`.
 
 ### Create the mainnet payout account
 
@@ -87,17 +86,17 @@ None. This checkpoint writes no contract code, so test layers start with the fir
 git ls-remote --tags origin
 near --version && cargo near --version
 rustup target list --installed
-near account view-account-summary herit.testnet network-config testnet now
-test ! -e ~/.near-credentials && echo "no plaintext credentials"
+near account view-account-summary herit-near.testnet network-config testnet now
+grep -rqs private_key ~/.near-credentials || echo "no plaintext keys"   # the CLI keeps non-secret bookkeeping files in this folder
 ```
 
 ## Verified at the stop
 
-- [ ] `pre-hackathon` is on the remote and points at `55115bf`
-- [ ] `LICENSE` exists
-- [ ] NEAR CLI is 0.31.1, `cargo-near` is 0.23.0, and `wasm32-wasip2` is installed
-- [x] `herit.testnet` exists
-- [ ] `herit.testnet` has a balance and its key is in Keychain
-- [ ] The helper accounts exist
-- [ ] The mainnet payout account exists
-- [ ] `~/.near-credentials` does not exist
+- [x] `pre-hackathon` is on the remote and points at `55115bf`
+- [x] `LICENSE` exists
+- [x] NEAR CLI is 0.31.1, `cargo-near` is 0.23.0, and `wasm32-wasip2` is installed
+- [x] `herit-near.testnet` exists
+- [x] `herit-near.testnet` has a balance and its key is in Keychain
+- [x] The helper accounts exist (suffix `kaykay`, keys in Keychain)
+- [x] The mainnet payout account exists
+- [x] No private keys in `~/.near-credentials` (the CLI's `accounts.json` and `ft_contracts.json` are expected there)
