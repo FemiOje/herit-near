@@ -10,6 +10,10 @@ name = "sandbox_smoke"
 path = "sandbox_smoke.rs"
 
 [[test]]
+name = "estate_state_machine"
+path = "estate_state_machine.rs"
+
+[[test]]
 name = "fork_smoke"
 path = "fork_smoke.rs"
 

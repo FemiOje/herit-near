@@ -11,11 +11,27 @@ fn wasm(name: &str) -> anyhow::Result<Vec<u8>> {
 #[tokio::test]
 async fn placeholders_deploy_and_answer() -> anyhow::Result<()> {
     let worker = near_workspaces::sandbox().await?;
-    for name in ["herit_estate", "herit_factory"] {
-        let contract = worker.dev_deploy(&wasm(name)?).await?;
-        let version: String = contract.view("version").await?.json()?;
-        assert_eq!(version, "0.1.0", "{name}");
-    }
+
+    let factory = worker.dev_deploy(&wasm("herit_factory")?).await?;
+    let version: String = factory.view("version").await?.json()?;
+    assert_eq!(version, "0.1.0", "herit_factory");
+
+    // The estate panics on every call until `new` has run.
+    let estate = worker.dev_deploy(&wasm("herit_estate")?).await?;
+    estate
+        .call("new")
+        .args_json(json!({
+            "grantor": estate.id(),
+            "attestor_pk": "ed25519:11111111111111111111111111111111",
+            "check_in_interval_sec": 120,
+            "grace_sec": 60,
+        }))
+        .transact()
+        .await?
+        .into_result()?;
+    let version: String = estate.view("version").await?.json()?;
+    assert_eq!(version, "0.1.0", "herit_estate");
+
     worker.fast_forward(10).await?;
     Ok(())
 }
