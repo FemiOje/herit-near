@@ -2,7 +2,7 @@
 
 Part of the [build plan](../near-build-plan.md). The worker code, publishing steps and pass criteria are in [the deployment guide](../near-deployment-guide.md), §7.1–§7.5.
 
-**Status:** not started
+**Status:** Claude's part done and tested on 2026-11-10; waiting on your steps under "Do (you)"
 **Who:** Claude writes the worker, its tests and the dev pages; you do the parts that need your wallet, your World developer account and your phone
 **Time box:** 3 hours. If it isn't passing by then, take the fallback below rather than cutting anything.
 
@@ -24,6 +24,10 @@ The contract doesn't change in this checkpoint. It already checks one ed25519 ke
 - **Why "exactly one".** World's v4 verify reply doesn't list nullifiers per credential; the Sepolia route found this. So the nullifier is read from the proof itself, which is only safe if the proof World just verified *is* the Selfie Check. A proof carrying two credentials could otherwise pass on the other one. Requiring a single response, with identifier `selfie` (or its legacy alias `face`), closes that gap whatever the reply format turns out to be.
 - **`caller: "none"` keys stay the same for every caller.** That is what lets one `attestor_pk` work for every estate. Renaming a key's path, or deleting and recreating the OutLayer project, changes the key.
 - **The worker never reads its environment.** With a `caller: "none"` key the caller can supply environment variables, so a salt from the environment could be swapped.
+- **Only World ID 3.0 proofs.** The `selfieCheckLegacy` preset only returns 3.0 proofs, and a person's 3.0 and 4.0 nullifiers differ. Accepting both would give one human two commitments and two heir slots, so the worker refuses anything but `protocol_version: "3.0"`.
+- **The proof must name our action.** Nullifiers are per action, so a proof for any other action would give the same human a fresh commitment. The worker refuses a proof whose `action` is missing or isn't `herit:<estate label>`. On 3.0 results IDKit marks `action` optional; the spike confirms real results carry it.
+- **Selfie Check is in preview at World** ("Contact us if you need it enabled"). The app must have it switched on.
+- **`WORLD_ENVIRONMENT=sandbox`** in `frontend/.env.local` is for World's simulator. A real Selfie Check on your phone needs `production`.
 
 ## Write (Claude)
 
@@ -36,12 +40,43 @@ The contract doesn't change in this checkpoint. It already checks one ed25519 ke
 4. **`near/scripts/spike-check-in.sh`:** sends a result to the worker, then submits the returned attestation as `check_in` on a test estate.
 5. **`frontend/scripts/sign-attestation.mjs`** from guide §7.5, the dev signer and fallback, with a test asserting the same golden hex.
 
+### Built (Claude, 2026-11-10)
+
+| Piece | Where | Tests |
+|---|---|---|
+| Worker | `near/attestor-worker/` (`src/logic.rs` decides, `src/main.rs` talks to World and the TEE) | 18 native tests in `src/logic/tests.rs`, including one where the real estate contract accepts the worker's attestation |
+| Signing route | `frontend/app/api/worldid/sign/route.ts`, reading `WORLD_APP_ID`, `WORLD_RP_ID`, `WORLD_SIGNING_KEY`, `WORLD_ENVIRONMENT` | Run against your real config |
+| Dev page | `frontend/app/dev/selfie/` at `/dev/selfie`, not served in production | Renders |
+| Dev signer | `frontend/scripts/sign-attestation.mjs`, encoder in `attestation-payload.mjs` | `pnpm test`: golden bytes; a real run verified |
+| Spike script | `near/scripts/spike-check-in.sh` | Syntax checked |
+
+The worker shares `near/target` (set in `near/attestor-worker/.cargo/config.toml`), so the NEAR SDK isn't compiled twice. The built wasm is `near/target/wasm32-wasip2/release/herit-attestor.wasm`, with the manifest in its `outlayer.manifest` custom section.
+
 ## Do (you)
 
-1. **World developer portal:** confirm the app from Sepolia still exists, and give Claude the public `WLD_RP_ID`. Put `RP_SIGNING_KEY` in `frontend/.env.local` yourself; it never goes in git or in chat.
-2. **OutLayer:** sign in to the dashboard with a testnet wallet, create the project `herit-attestor` from the wasm Claude builds, and try to fund a testnet Payment Key.
-3. **Test estate:** deploy `herit-estate` to a throwaway account, for example `spike-kaykay.testnet`, and call `new` with `grantor` = `alice-kaykay.testnet` and the worker's `attestor_pk`. Claude gives you the exact CLI commands.
-4. **Selfie Check:** open the dev page, do a real Selfie Check in the World App, and run the spike script with the result.
+1. **World:** in the developer portal, check that Selfie Check is enabled for `app_ea26c04b8c94d8053f2b9277f1caae83`. Set `WORLD_ENVIRONMENT=production` in `frontend/.env.local` for a real check on your phone.
+2. **Host the wasm:** OutLayer needs a URL and the SHA-256, and a run built from a GitHub repository gets no keys. For example, attach the wasm to a GitHub release on `FemiOje/herit-near`:
+   ```bash
+   cd near/attestor-worker && cargo build --target wasm32-wasip2 --release
+   shasum -a 256 ../target/wasm32-wasip2/release/herit-attestor.wasm
+   ```
+3. **OutLayer:** sign in to the dashboard with a testnet wallet, create the project `herit-attestor` from that URL and hash, and fund a testnet Payment Key. Then read the key twice; it must not change:
+   ```bash
+   export OUTLAYER_PROJECT=<your-account>.testnet/herit-attestor
+   export OUTLAYER_PAYMENT_KEY=...   # in your shell only
+   curl -s -X POST "https://testnet-api.outlayer.ai/call/$OUTLAYER_PROJECT" \
+     -H "X-Payment-Key: $OUTLAYER_PAYMENT_KEY" -H 'Content-Type: application/json' \
+     -d '{"input":{"operation":"public_key"}}'
+   ```
+4. **Test estate** `spike.herit-near.testnet`. It must sit under the factory account, because the worker only attests for `*.herit-near.testnet`. Put the worker's key in `attestor_pk`:
+   ```bash
+   near account create-account fund-myself spike.herit-near.testnet '2 NEAR' autogenerate-new-keypair \
+     save-to-keychain sign-as herit-near.testnet network-config testnet sign-with-keychain send
+   near contract deploy spike.herit-near.testnet use-file near/target/near/herit_estate/herit_estate.wasm \
+     with-init-call new json-args '{"grantor":"alice-kaykay.testnet","attestor_pk":"ed25519:...","check_in_interval_sec":600,"grace_sec":300}' \
+     prepaid-gas '100 Tgas' attached-deposit '0 NEAR' network-config testnet sign-with-keychain send
+   ```
+5. **Selfie Check:** run `pnpm dev` in `frontend/`, open `/dev/selfie`, keep estate `spike` and subject `alice-kaykay.testnet`, and do the check in the World App. Copy the output into `near/scripts/spike-input.json` (gitignored), then run `near/scripts/spike-check-in.sh near/scripts/spike-input.json`.
 
 ## Pass criteria (guide §7.4)
 
@@ -60,14 +95,15 @@ If the time box runs out, sign in the Next.js route with a local dev key instead
 ## Check
 
 ```bash
-cd near/attestor-worker && cargo test && cargo build --target wasm32-wasip2 --release
-cd ../.. && cd frontend && node --test scripts/
+cd near/attestor-worker && cargo test && cargo clippy --all-targets -- -D warnings \
+  && cargo build --target wasm32-wasip2 --release
+cd ../../frontend && pnpm test && pnpm exec tsc --noEmit && pnpm lint
 ```
 
 ## Verified at the stop
 
 - [ ] Go or fallback recorded in the build plan
-- [ ] The worker refuses any proof that isn't exactly one Selfie Check
-- [ ] Worker golden, selfie-only and input tests pass, and the JS signer's golden test passes
+- [x] The worker refuses any proof that isn't exactly one World ID 3.0 Selfie Check for this estate's action
+- [x] Worker golden, selfie-only and input tests pass, and the JS signer's golden test passes
 - [ ] A real Selfie Check produced a `check_in` the contract accepted (go path), with the transaction link recorded
 - [ ] No secrets in git: `RP_SIGNING_KEY`, the Payment Key and any dev key stay in `.env.local`
