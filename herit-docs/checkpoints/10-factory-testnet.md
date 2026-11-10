@@ -2,7 +2,7 @@
 
 Part of the [build plan](../near-build-plan.md). Starter code: [the deployment guide](../near-deployment-guide.md) §4 (accounts and the Global Contract budget), §6.3 (`herit-factory`), §6.4 (fallback) and §8.3–§8.4 (deploy and smoke run).
 
-**Status:** Parts 1–2 done on 2026-11-10; Part 2 waiting for your review
+**Status:** all four parts done on 2026-11-10: Herit is live on testnet, and a whole estate has run on it; Part 4 waiting for your review
 **Who:** built together, in parts. Claude writes each part's code and tests and walks you through them; you review, and the next part starts after your OK. You sign the testnet transactions.
 
 ## Goal
@@ -14,9 +14,9 @@ Herit goes live on testnet: `herit-near.testnet` runs the factory, `open_estate`
 | Part | What | Status |
 |---|---|---|
 | 1 | **Size:** measure the estate wasm and take the cheap savings, with no behaviour change | Done, reviewed |
-| 2 | **The factory contract:** `open_estate`, its rollback, `set_attestor`, views; the grantor pays for the factory's records | Done, waiting for your review |
-| 3 | **Publish to testnet:** mock USDC, the estate code as a Global Contract, the factory deployed and initialised in one transaction | |
-| 4 | **Smoke run:** a real estate opened through the factory, through its whole life, with NearBlocks links | |
+| 2 | **The factory contract:** `open_estate`, its rollback, `set_attestor`, views; the grantor pays for the factory's records | Done, reviewed |
+| 3 | **Publish to testnet:** mock USDC, the estate code as a Global Contract, the factory deployed and initialised in one transaction | Done, reviewed |
+| 4 | **Smoke run:** a real estate opened through the factory, through its whole life, with NearBlocks links | Done, waiting for your review |
 
 ## Part 1: Size
 
@@ -85,6 +85,81 @@ From §6.3 of the deployment guide, in `near/contracts/herit-factory/src/lib.rs`
 | Unit (12) | `contracts/herit-factory/src/tests.rs` | `new` stores the hash and key and refuses bad ones; the batch: create, funding less the fee, the published code by the exact hash from `new`, `new` with the caller as grantor and the timers, and no key; the minimum deposit; bad labels; a created estate is recorded and logged; a failed one refunds the whole deposit and records nothing; listing per grantor and in pages; `set_attestor` reaches new estates and refuses a bad key |
 | Fuzz | `contracts/herit-factory/src/fuzz.rs` | Any label and deposit: `open_estate` goes ahead exactly when the label is valid and at least 0.11 NEAR is attached |
 | Sandbox (4) | `near/tests/estate_factory.rs` | With the real estate wasm published: the estate account runs the Global Contract by its hash, has no keys, holds the deposit less the fee, and is recorded; the estate then lives a whole life (heir, check-in, deposit, unlock, claim) with the factory's attestor key and the caller as grantor; a taken name and bad timers each refund all but gas and create nothing; only the factory can run its callback or set the attestor |
+
+## Part 3: Published on testnet (2026-11-10)
+
+You chose a **reproducible build** for what goes on chain, so anyone can check the published code is our source.
+
+### Understand first
+
+- **Why Docker, when Ethereum didn't need it.** Etherscan verifies by recompiling with the same `solc` version: `solc` gives the same bytes on any machine. Rust-to-wasm doesn't: the output depends on the toolchain, the OS, dependency versions, even the folder path (our local wasm contains `/Users/user/...` strings). So NEAR builds in one pinned Docker image, `sourcescan/cargo-near:0.21.1-rust-1.96.1@sha256:86bd27dd…`, pinned in our `Cargo.toml` since Checkpoint 2. SourceScan, which NearBlocks uses, rebuilds the commit in the same image and checks the hash. Docker only builds; nothing runs in it on chain.
+- **Apple Silicon.** The image is `linux/amd64`. Docker's default QEMU emulation crashed `rustc` (`qemu: uncaught target signal 11`); with Docker Desktop's **Use Rosetta for x86_64/amd64 emulation** switched on, it builds. The image and the output don't change.
+- **What the wasm says about itself.** Each reproducible build embeds NEP-330 metadata: the source link `github.com/FemiOje/herit-near/tree/bb8e6124…` (the commit pushed just before), the build image and the build command.
+- **Tested before published.** The 37 sandbox tests ran on these exact wasm files, and the estate's hash was checked again just before the publish.
+
+### What's on chain
+
+| What | Account | Code | Transaction |
+|---|---|---|---|
+| Publisher topped up (22 NEAR from the factory) | `herit-code-kaykay.testnet` | | [`GB8kPYFZ…`](https://testnet.nearblocks.io/txns/GB8kPYFZwN7BdeCEUZt5H8ZnTGiqUP3U27PbXX5fVvYF) |
+| Mock USDC (`mUSDC`, 6 decimals), 1,000,000 minted to the demo grantor `alice-kaykay.testnet` | `mock-usdc-kaykay.testnet` | local build (test token) | [`8rcMMBpM…`](https://testnet.nearblocks.io/txns/8rcMMBpMjE9agkakMJ278b48UExgqxWrPiepB7z7KCjA) |
+| **Estate code, published as an immutable Global Contract by hash** | published by `herit-code-kaykay.testnet` | `87NJpRzyMsaL4WWYspngjbHoLBKPJSjiyrFEpDKXNgE8`, 302,829 bytes, reproducible | [`FvSiTJ2W…`](https://testnet.nearblocks.io/txns/FvSiTJ2W6etG8qX9Yx7iW8qxVE6AxTBEx52D3Ft5uHJ9) |
+| **Factory, deployed and initialised in one transaction** | `herit-near.testnet` | `9Ppy6MHANNM3i5tR21pjmkgx9gKAwfoHyxtmFT6iNHpK` (hex `7cb68281…`), 151,499 bytes, reproducible | [`46VXZTEM…`](https://testnet.nearblocks.io/txns/46VXZTEMSGgmnWdjhwZvXXRtkZ4CKk6MsEaDnL1RVYf8) |
+
+### Part 4: The smoke run (2026-11-10)
+
+`alice.herit-near.testnet`, opened through the factory by `alice-kaykay.testnet`, run through its whole life by `near/scripts/smoke-testnet.sh` (120 s interval, 60 s grace). Every attestation came from the dev signer with the testnet attestor key, so the heirs could have faces different from the grantor's; the real Selfie Check path was proven in Checkpoint 5. Each heir got a fresh key that only their account holds, kept outside git.
+
+| # | Step | Transaction | Events |
+|---|---|---|---|
+| 1 | The grantor opens `alice.herit-near.testnet` through the factory (1 NEAR) | [`56a5W8St…`](https://testnet.nearblocks.io/txns/56a5W8StD9NC5CXtHCwMP3xwz6XKvG78hYD7wpAfhfqm) | `estate_opened` (estate and factory) |
+| 2 | Heir `son.alice.herit-near.testnet` (60%), with his own key | [`2J1LxqBp…`](https://testnet.nearblocks.io/txns/2J1LxqBp7ZBffc9zqGsTdnufwN65djfhmMyPSSFtdJLg) | `nft_mint`, `heir_added` |
+| 2 | Heir `daughter.alice.herit-near.testnet` (40%), with her own key | [`EGJjZ6hh…`](https://testnet.nearblocks.io/txns/EGJjZ6hhx3p1TPfNJt3TBTnqtQWz1876XfpSVrPfUszS) | `nft_mint`, `heir_added` |
+| 3 | Deposit 3 NEAR | [`BRMH7Uz7…`](https://testnet.nearblocks.io/txns/BRMH7Uz7sphkozW45RKoCTEruzrLMBSScA4GfxExqd1z) | `deposited` |
+| 4 | Add mock USDC | [`3uz5YF6z…`](https://testnet.nearblocks.io/txns/3uz5YF6zQJLV2Q7Yo6MYkapekS8giCzhq8mRJDUcRaTW) | `token_added` |
+| 4 | Deposit 10 mUSDC (`ft_transfer_call`) | [`De1Qs78K…`](https://testnet.nearblocks.io/txns/De1Qs78KtLyLTbefjcJkWDkdtLFW2cnjCDn18auZVfBH) | `ft_transfer`, `deposited` |
+| 5 | The son's mUSDC share set to 25% | [`F7fxJbCU…`](https://testnet.nearblocks.io/txns/F7fxJbCUVMEvebt4mEdT848VAeJ9HUABvL8HbQyBZmgP) | `share_set` |
+| 6 | First check-in: binds the grantor's face, starts the clock | [`EG4JCk3C…`](https://testnet.nearblocks.io/txns/EG4JCk3ChiE2C7dpCfER1NktvJWfPz4SzoctbdWj8Qj6) | `checked_in` |
+| 7 | The grantor withdraws 0.5 NEAR with a fresh withdrawal attestation | [`CRVET1Rb…`](https://testnet.nearblocks.io/txns/CRVET1Rbb1hxMJvDRQMDwknSVreVxZKw2AzqWAYNLmPN) | `withdrawn` |
+| 8 | Before the deadline: Active, 2.49838 NEAR and 10 mUSDC held, credentials `locked` | | |
+| 9 | Three minutes on: the clock says Unlocked, nobody has poked, credentials `claimable` | | |
+| 10 | **The son claims**, from his own account: his claim unlocks and freezes the estate, then pays him | [`576wFUGR…`](https://testnet.nearblocks.io/txns/576wFUGRt8CJaFNj3VzUaJ2ERAT4TCPnxPLP4DX6mseE) | `snapshotted`, `unlocked`, `claim_attested`, `claim_settled`, `claimed` ×2 |
+| 10 | **The daughter claims**, from her own account | [`2KavSpcd…`](https://testnet.nearblocks.io/txns/2KavSpcdTV5hxeDUh9e5ebbTCz5REQL5Vce3B8u5VWsh) | `claim_attested`, `claim_settled`, `claimed` ×2 |
+
+### The result
+
+| | Son | Daughter | Left in the estate |
+|---|---|---|---|
+| mUSDC (snapshot 10) | 2.5 (his 25% override) | 4 (her 40%) | 3.5: the 35% nobody was given |
+| NEAR (snapshot 2.49838) | 1.49903 (60%) | 0.99935 (40%) | 0 |
+| Credential | `claimed` | `claimed` | |
+
+The son's account now holds 1.594 NEAR (his share plus what was left of his 0.1 NEAR seed after costs), the daughter's 1.095 NEAR.
+
+### Found: gas has to be held up front
+
+The first claim attempt was refused before it was sent: "Account son.alice.herit-near.testnet does not have enough balance (0.1 NEAR) to cover TX cost (0.1109 NEAR)". NEAR reserves attached gas at a pessimistic price, about 0.1 NEAR per 100 Tgas, and only refunds what isn't burnt afterwards. So a signer must *hold* that much, even though a claim of two assets burns only about 14 Tgas (0.0014 NEAR). Checkpoint 8 put this down to the sandbox's gas price; it's NEAR's rule everywhere.
+
+What it means:
+- **With its 0.1 NEAR seed, an heir can attach about 80 Tgas.** A claim needs roughly 15 Tgas plus about 5 per NEAR payout and 25 per token payout (registration, transfer, callback): NEAR and up to two tokens fit. The run's claims attached 50 Tgas.
+- **More tokens need more NEAR on the heir's account.** Anyone can send NEAR to an heir's account (it's an ordinary account), so the grantor, a co-heir or the app can top it up. The seed is in the published estate code, so it can't change on testnet.
+- **For the frontend:** attach gas by the estate's asset count, not a fixed 300 Tgas, and say "send this heir 0.1 NEAR" when the seed won't cover it.
+- **For mainnet:** a larger seed, or a claim that pays tokens across several calls, before publishing.
+
+The script now attaches 50 Tgas to claims.
+
+## Checked afterwards
+
+- `herit-near.testnet` `version`: `0.1.0`; `config`: estate code hash `87NJpRzy…`, attestor `ed25519:FzTUQSiL…` (the testnet route's key from Checkpoint 5); `estates_count`: 0.
+- The RPC's `view_global_contract_code` for `87NJpRzy…` returns all 302,829 bytes.
+- `alice-kaykay.testnet` holds 1,000,000 mUSDC.
+
+### What it cost
+
+| Account | Before | After | Where it went |
+|---|---|---|---|
+| `herit-code-kaykay.testnet` | 10 + 22 NEAR | 1.71 NEAR | about 30.28 NEAR burned by the publish |
+| `herit-near.testnet` | 47.99 NEAR | 25.99 NEAR | 22 NEAR to the publisher; 1.5 NEAR now locked for the factory's 151.8 KB |
 
 ## Check
 

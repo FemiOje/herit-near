@@ -79,7 +79,7 @@ Wasm: 236 KB.
 - **Why a retry is allowed.** On Sepolia the payout was in the same transaction, so a claim either paid or reverted. On NEAR each transfer is a separate receipt that can fail after `claim` returns (Part 3 credits it back). The heir must then be able to claim again, so the same face may claim the same label as many times as needed; each asset is still paid only once (Part 3).
 - **`claim` pokes first.** The first claim after the deadline unlocks the estate and takes the snapshot (Part 1). If the claim is then refused, the whole call reverts, poke included.
 - **Storage: the heir pays.** The first claim writes the commitment record (about 100 bytes, 0.001 NEAR). `claim` is `#[payable]` and charges the heir for it out of their account's 0.1 NEAR seed, refunding the surplus, so it never comes out of the estate. A retry writes nothing and needs nothing attached.
-- **Gas.** On testnet and mainnet gas costs 0.0001 NEAR per Tgas, so the seed covers hundreds of Tgas of claims. The local sandbox prices gas about 10 times higher, so the sandbox tests attach 50 Tgas rather than the maximum: a signer must be able to prepay all the gas it attaches.
+- **Gas.** Gas costs 0.0001 NEAR per Tgas burnt, but NEAR reserves *attached* gas up front at a pessimistic price, about 0.1 NEAR per 100 Tgas, on every network. So a signer must hold that much, and the heir's 0.1 NEAR seed covers a claim attaching up to about 80 Tgas. The tests attach 50. (First written here as a sandbox quirk; the testnet smoke run in Checkpoint 10 showed it's NEAR's rule.)
 
 ### Built
 
