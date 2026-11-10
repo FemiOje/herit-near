@@ -32,6 +32,8 @@ Deadline: **2026-11-14 23:59 UTC**. Aim to submit by 12:00 UTC.
 - [x] 4: [Estate attestations and check-in](checkpoints/04-estate-attestation.md) (Claude, at your request)
 - [x] 5: [Selfie Check attestor](checkpoints/05-outlayer-selfie-check.md) (Claude + you): passed on testnet through the Next.js route; OutLayer worker ready for mainnet
 - [x] 6: [Heirs as real sub-accounts](checkpoints/06-heirs.md) (Claude, at your request)
+- [x] 7: [The vault](checkpoints/07-vault.md) (built together in parts: Claude wrote, you reviewed)
+- [x] 8: [Claims](checkpoints/08-claims.md) (built together in parts: Claude wrote, you reviewed)
 
 ---
 

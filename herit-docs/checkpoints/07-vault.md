@@ -2,7 +2,7 @@
 
 Part of the [build plan](../near-build-plan.md). Starter code: [the deployment guide](../near-deployment-guide.md) §6.1 (`deposit`, `ft_on_transfer`) and §6.5 (`add_token`, `set_share`, `withdraw`).
 
-**Status:** all four parts built and tested on 2026-11-10; Part 4 waiting for your review
+**Status:** done on 2026-11-10; all four parts reviewed
 **Who:** built together, in parts. Claude writes each part's code and tests and walks you through them; you review, and the next part starts after your OK.
 
 ## Goal
@@ -16,7 +16,7 @@ The estate holds NEAR and stablecoins for the heirs, knows each heir's share of 
 | 1 | **NEAR deposits** on the `HeritVault` shape: per-asset `balances`, a `tokens` list capped at 10, `deposit()`, `balance_of`, `tokens_of` | Done, reviewed |
 | 2 | **Token deposits:** `add_token` lists a NEP-141 token and registers the estate with it; `ft_on_transfer` is `depositERC20`. Sandbox test with mock USDC | Done, reviewed |
 | 3 | **Per-asset shares** on the `HeritRegistry` shape: `set_share` overrides a default for one asset, every asset capped at 100% | Done, reviewed |
-| 4 | **Withdrawals with a fresh Selfie Check:** `withdraw` needs an `ACTION_WITHDRAW` attestation from the grantor's bound face; debit first, credit back if the transfer fails | Done, waiting for your review |
+| 4 | **Withdrawals with a fresh Selfie Check:** `withdraw` needs an `ACTION_WITHDRAW` attestation from the grantor's bound face; debit first, credit back if the transfer fails | Done, reviewed |
 
 ## Part 1: NEAR deposits
 
