@@ -28,6 +28,7 @@ Deadline: **2026-11-14 23:59 UTC**. Aim to submit by 12:00 UTC.
 
 - [x] 1: [Baseline, tools, accounts](checkpoints/01-baseline-tools-accounts.md)
 - [x] 2: [Rust workspace and test harness](checkpoints/02-workspace.md) (Claude)
+- [x] 3: [Estate state machine](checkpoints/03-estate-state-machine.md) (Claude, at your request)
 
 ---
 
