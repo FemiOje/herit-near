@@ -1,0 +1,3 @@
+# Share the contracts' build folder, so the NEAR SDK used by the end-to-end test isn't compiled twice.
+[build]
+target-dir = "../target"

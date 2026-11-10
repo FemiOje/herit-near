@@ -1,0 +1,9 @@
+{
+  "display": { "name": "Herit attestor" },
+  "operations": ["public_key", "attest"],
+  "capabilities": { "network": ["developer.world.org"] },
+  "signing_keys": [
+    { "path": "attestor", "type": "ed25519", "caller": "none" },
+    { "path": "commitment-salt", "type": "ed25519", "caller": "none" }
+  ]
+}
