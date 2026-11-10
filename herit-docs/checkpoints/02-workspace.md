@@ -2,7 +2,7 @@
 
 Part of the [build plan](../near-build-plan.md). Layout and pins come from [the deployment guide](../near-deployment-guide.md), §3 and §5.
 
-**Status:** not started
+**Status:** done, checks passed on 2026-11-10
 **Who:** Claude scaffolds; you read it, run the checks, and ask about anything unclear
 
 ## Goal
@@ -86,12 +86,12 @@ cargo clippy --all-targets -- -D warnings
 cargo fmt --all --check
 ```
 
-The layout was tried in a throwaway workspace on 2026-11-09 with one contract. The wasm build, unit, fuzz, sandbox, fork, clippy and fmt all passed. The factory, `mock-ft` and the reproducible build haven't been tried yet.
+Claude ran all of these on the real workspace on 2026-11-09 and they passed. The reproducible build hasn't been tried yet.
 
 ## Verified at the stop
 
-- [ ] All three contracts produce a `.wasm`
-- [ ] `cargo test` passes, including the sandbox smoke test
-- [ ] The fork smoke test passes with `--ignored`
-- [ ] `cargo clippy` shows no warnings and `cargo fmt` is clean
-- [ ] `target/` is ignored and `near/Cargo.lock` is tracked
+- [x] All three contracts produce a `.wasm`
+- [x] `cargo test` passes, including the sandbox smoke test
+- [x] The fork smoke test passes with `--ignored`
+- [x] `cargo clippy` shows no warnings and `cargo fmt` is clean
+- [x] `target/` is ignored and `near/Cargo.lock` is tracked
