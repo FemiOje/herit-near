@@ -18,8 +18,8 @@ pub const ACTION_CLAIM: u8 = 1;
 pub const ACTION_WITHDRAW: u8 = 2;
 /// 1M mUSDC at 6 decimals.
 pub const SUPPLY: u128 = 1_000_000_000_000;
-/// Gas an heir attaches to `claim`. The sandbox prices gas about 10x testnet and mainnet
-/// (0.0001 NEAR per Tgas there), so the heir's 0.1 NEAR seed is tighter here than on a real network.
+/// Gas an heir attaches to `claim`. NEAR reserves attached gas up front at a pessimistic price
+/// (about 0.1 NEAR per 100 Tgas, on every network), and an heir's account holds its 0.1 NEAR seed.
 pub const CLAIM_GAS_TGAS: u64 = 50;
 /// What 1 byte of storage stakes: 0.00001 NEAR.
 pub const BYTE_COST: u128 = 10_000_000_000_000_000_000;
