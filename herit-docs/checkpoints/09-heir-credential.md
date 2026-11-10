@@ -2,7 +2,7 @@
 
 Part of the [build plan](../near-build-plan.md). Starter code: [the deployment guide](../near-deployment-guide.md) §6.2 (`src/nft.rs`). Track: **#10 NFTs That Do Something**: "Dynamic NFTs · NEP-171 · Sub-accounts".
 
-**Status:** all four parts built and tested on 2026-11-10; images pinned on Pinata; Part 4 waiting for your review
+**Status:** done on 2026-11-10; all four parts reviewed; images pinned on Pinata
 **Who:** built together, in parts. Claude writes each part's code and tests and walks you through them; you review, and the next part starts after your OK.
 
 ## Goal
@@ -16,7 +16,7 @@ Each heir holds a NEP-171 token that every NEAR wallet and explorer can show. It
 | 1 | **NEP-171 views:** `nft_metadata`, `nft_token`, `nft_tokens`, `nft_total_supply`, `nft_tokens_for_owner`, `nft_supply_for_owner`; metadata computed from live state | Done, reviewed |
 | 2 | **Soulbound and the standard events:** every transfer and approval call refuses; `nft_mint` when an heir's account is created, `nft_burn` on `remove_heir` | Done, reviewed |
 | 3 | **What it looks like:** one image per state on IPFS, chosen by the contract from the live state (your call, 2026-11-10, instead of an on-chain SVG) | Done, pinned, reviewed |
-| 4 | **On a real node:** the credential through a whole lifecycle; every transfer route refused | Done, waiting for your review |
+| 4 | **On a real node:** the credential through a whole lifecycle; every transfer route refused | Done, reviewed |
 
 ## Part 1: The NEP-171 views
 

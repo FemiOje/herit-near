@@ -34,6 +34,7 @@ Deadline: **2026-11-14 23:59 UTC**. Aim to submit by 12:00 UTC.
 - [x] 6: [Heirs as real sub-accounts](checkpoints/06-heirs.md) (Claude, at your request)
 - [x] 7: [The vault](checkpoints/07-vault.md) (built together in parts: Claude wrote, you reviewed)
 - [x] 8: [Claims](checkpoints/08-claims.md) (built together in parts: Claude wrote, you reviewed)
+- [x] 9: [The heir credential](checkpoints/09-heir-credential.md) (built together in parts: Claude wrote, you reviewed; you pinned the images)
 
 ---
 
