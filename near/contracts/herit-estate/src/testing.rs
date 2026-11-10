@@ -1,19 +1,29 @@
 //! Shared helpers for the unit, fuzz and invariant tests.
 
+use ed25519_dalek::{Signer, SigningKey};
+use near_sdk::json_types::{Base64VecU8, U64};
 use near_sdk::test_utils::VMContextBuilder;
 use near_sdk::{AccountId, testing_env};
 
-use super::Estate;
+use super::{ACTION_CHECKIN, Attestation, DOMAIN, Estate, NS_PER_SEC, SignedPayload};
 
-/// 32 zero bytes in base58.
-pub const ATTESTOR_PK: &str = "ed25519:11111111111111111111111111111111";
 pub const INTERVAL_SEC: u32 = 30 * 86_400;
 pub const GRACE_SEC: u32 = 7 * 86_400;
 /// An arbitrary first check-in time, well after the epoch.
 pub const CHECKED_IN_AT: u64 = 1_700_000_000 * 1_000_000_000;
+/// How long a test attestation lives: comfortably under the 30-minute cap.
+pub const LIFETIME_NS: u64 = 15 * 60 * NS_PER_SEC;
+/// Stand-ins for two different humans' World ID commitments.
+pub const GRANTOR_FACE: [u8; 32] = [1; 32];
+pub const OTHER_FACE: [u8; 32] = [2; 32];
+const ATTESTOR_SECRET: [u8; 32] = [7; 32];
+const OTHER_SECRET: [u8; 32] = [8; 32];
 
 pub fn estate_id() -> AccountId {
     "alice.herit-near.testnet".parse().unwrap()
+}
+pub fn other_estate_id() -> AccountId {
+    "bob.herit-near.testnet".parse().unwrap()
 }
 pub fn factory() -> AccountId {
     "herit-near.testnet".parse().unwrap()
@@ -23,6 +33,21 @@ pub fn grantor() -> AccountId {
 }
 pub fn stranger() -> AccountId {
     "mallory.testnet".parse().unwrap()
+}
+
+/// The test attestor's public key bytes, which `new` stores.
+pub fn attestor_pk_bytes() -> [u8; 32] {
+    SigningKey::from_bytes(&ATTESTOR_SECRET)
+        .verifying_key()
+        .to_bytes()
+}
+
+/// The test attestor's public key in NEAR's `ed25519:<base58>` form, as `new` takes it.
+pub fn attestor_pk() -> String {
+    format!(
+        "ed25519:{}",
+        near_sdk::bs58::encode(attestor_pk_bytes()).into_string()
+    )
 }
 
 /// Sets who is calling (`predecessor`) and the block time in nanoseconds.
@@ -41,18 +66,117 @@ pub fn new_estate() -> Estate {
     new_estate_with(INTERVAL_SEC, GRACE_SEC)
 }
 
+/// Starts from empty storage, as a new account on chain would. Mocked storage otherwise lives for
+/// the whole test thread, so one fuzz case's nonces would still be "used" in the next.
 pub fn new_estate_with(interval_sec: u32, grace_sec: u32) -> Estate {
     set_context(factory(), 0);
-    Estate::new(grantor(), ATTESTOR_PK.into(), interval_sec, grace_sec)
+    near_sdk::mock::with_mocked_blockchain(|b| drop(b.take_storage()));
+    Estate::new(grantor(), attestor_pk(), interval_sec, grace_sec)
 }
 
-/// Runs `f`, and if it panics, restores `estate` to its state before the call, the way a failed
-/// transaction reverts on chain. Returns whether the call succeeded.
+/// Everything an attestation is signed over, plus the signing key. Tests change one field to
+/// build a bad attestation.
+#[derive(Clone, Debug)]
+pub struct Att {
+    pub estate: AccountId,
+    pub subject: AccountId,
+    pub action: u8,
+    pub heir_label: Option<String>,
+    pub commitment: [u8; 32],
+    pub nonce: u64,
+    pub expiry_ns: u64,
+    pub key: [u8; 32],
+}
+
+impl Att {
+    /// A valid check-in for the grantor of `estate_id()`, made at `now_ns`.
+    pub fn check_in(nonce: u64, now_ns: u64) -> Self {
+        Self {
+            estate: estate_id(),
+            subject: grantor(),
+            action: ACTION_CHECKIN,
+            heir_label: None,
+            commitment: GRANTOR_FACE,
+            nonce,
+            expiry_ns: now_ns + LIFETIME_NS,
+            key: ATTESTOR_SECRET,
+        }
+    }
+
+    pub fn signed_by_another_key(mut self) -> Self {
+        self.key = OTHER_SECRET;
+        self
+    }
+
+    /// Signs the payload the way the attestor does: Borsh-encode `SignedPayload`, then ed25519.
+    pub fn sign(&self) -> (Attestation, Base64VecU8) {
+        let msg = near_sdk::borsh::to_vec(&SignedPayload {
+            domain: DOMAIN.into(),
+            estate_id: self.estate.clone(),
+            subject: self.subject.clone(),
+            action: self.action,
+            heir_label: self.heir_label.clone(),
+            commitment: self.commitment,
+            nonce: self.nonce,
+            expiry_ns: self.expiry_ns,
+        })
+        .unwrap();
+        let sig = SigningKey::from_bytes(&self.key).sign(&msg).to_bytes();
+        (self.attestation(), Base64VecU8(sig.to_vec()))
+    }
+
+    /// The JSON arguments the caller passes, without signing.
+    pub fn attestation(&self) -> Attestation {
+        Attestation {
+            action: self.action,
+            heir_label: self.heir_label.clone(),
+            commitment: Base64VecU8(self.commitment.to_vec()),
+            nonce: U64(self.nonce),
+            expiry_ns: U64(self.expiry_ns),
+        }
+    }
+}
+
+/// The grantor checks in at `now_ns` with a valid attestation.
+pub fn check_in_at(estate: &mut Estate, now_ns: u64, nonce: u64) {
+    set_context(grantor(), now_ns);
+    let (attestation, signature) = Att::check_in(nonce, now_ns).sign();
+    estate.check_in(attestation, signature);
+}
+
+/// Runs `f`, and if it panics, restores `estate` and its storage to how they were before the call,
+/// the way a failed transaction reverts on chain. Returns whether the call succeeded.
+///
+/// Both halves matter: the struct's plain fields live in memory, while collections such as
+/// `used_nonces` write to storage as soon as they change. Any write a collection still buffers is
+/// saved when it's dropped, so the estate is reloaded first, and after a panic the half-finished
+/// copy is forgotten rather than dropped.
 pub fn call_reverting(estate: &mut Estate, f: impl FnOnce(&mut Estate)) -> bool {
     let before = near_sdk::borsh::to_vec(estate).unwrap();
+    *estate = near_sdk::borsh::from_slice(&before).unwrap();
+    let storage = snapshot_storage();
     let ok = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(estate))).is_ok();
     if !ok {
-        *estate = near_sdk::borsh::from_slice(&before).unwrap();
+        let failed = std::mem::replace(estate, near_sdk::borsh::from_slice(&before).unwrap());
+        std::mem::forget(failed);
+        restore_storage(&storage);
     }
     ok
+}
+
+type Storage = std::collections::HashMap<Vec<u8>, Vec<u8>>;
+
+/// Copies the mocked storage. The mock can only hand storage out by emptying it, so it is
+/// written straight back.
+fn snapshot_storage() -> Storage {
+    let storage = near_sdk::mock::with_mocked_blockchain(|b| b.take_storage());
+    restore_storage(&storage);
+    storage
+}
+
+fn restore_storage(storage: &Storage) {
+    near_sdk::mock::with_mocked_blockchain(|b| drop(b.take_storage()));
+    for (key, value) in storage {
+        near_sdk::env::storage_write(key, value);
+    }
 }

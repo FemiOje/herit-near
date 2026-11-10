@@ -1,17 +1,23 @@
 //! Herit estate: one contract per estate, at `<label>.herit-near.testnet`.
 //!
-//! Checkpoint 3 adds the liveness clock: Active → Grace → Unlocked, and never back from Unlocked.
-//! Attestations, heirs, the vault and claims build on this in later checkpoints.
+//! Checkpoint 3: the liveness clock, Active → Grace → Unlocked, and never back from Unlocked.
+//! Checkpoint 4: `check_in` with a World ID attestation, which restarts the clock.
+//! Heirs, the vault and claims build on this in later checkpoints.
 
-use near_sdk::json_types::U64;
-use near_sdk::{AccountId, PanicOnDefault, env, near, require};
+use near_sdk::json_types::{Base64VecU8, U64};
+use near_sdk::store::LookupSet;
+use near_sdk::{AccountId, BorshStorageKey, PanicOnDefault, env, near, require};
 
+pub const ACTION_CHECKIN: u8 = 0;
+const DOMAIN: &str = "herit-near:v1";
 // Same bounds as HeritRegistry on Sepolia.
 const MIN_CHECK_IN_INTERVAL_SEC: u32 = 120;
 const MAX_CHECK_IN_INTERVAL_SEC: u32 = 90 * 86_400;
 const MIN_GRACE_SEC: u32 = 60;
 const MAX_GRACE_SEC: u32 = 14 * 86_400;
 const NS_PER_SEC: u64 = 1_000_000_000;
+/// Same 30-minute cap as Sepolia.
+const MAX_ATTESTATION_LIFETIME_NS: u64 = 30 * 60 * NS_PER_SEC;
 
 #[near(serializers = [borsh, json])]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -21,22 +27,61 @@ pub enum Status {
     Unlocked,
 }
 
+/// What the attestor signs. Borsh is positional: this field order and these types must match
+/// the signers exactly (the OutLayer worker, §7.1, and the JS dev signer, §7.5). The golden test
+/// in `src/golden.rs` pins the bytes.
+///
+/// `estate_id` and `subject` are not arguments: `verify` fills them from the runtime, so a
+/// signature only verifies for this estate and this caller.
+#[near(serializers = [borsh])]
+struct SignedPayload {
+    domain: String,
+    estate_id: AccountId,
+    subject: AccountId,
+    action: u8,
+    heir_label: Option<String>,
+    commitment: [u8; 32],
+    nonce: u64,
+    expiry_ns: u64,
+}
+
+/// The part of the signed payload the caller passes in, as JSON.
+#[near(serializers = [json])]
+#[derive(Clone, Debug)]
+pub struct Attestation {
+    pub action: u8,
+    pub heir_label: Option<String>,
+    /// 32 bytes identifying the human (from their World ID nullifier), base64.
+    pub commitment: Base64VecU8,
+    pub nonce: U64,
+    pub expiry_ns: U64,
+}
+
+/// Storage prefixes. A variant's position is its prefix, so only ever append.
+#[derive(BorshStorageKey)]
+#[near]
+enum Key {
+    Nonces,
+}
+
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
 pub struct Estate {
     /// Whoever called `new`: the factory that created this account.
     factory: AccountId,
     grantor: AccountId,
-    /// ed25519 key of the World ID attestor. Used from Checkpoint 4.
+    /// ed25519 key of the World ID attestor.
     attestor_pk: [u8; 32],
-    /// The grantor's face commitment, bound on the first check-in. Used from Checkpoint 4.
+    /// The grantor's face commitment, bound on the first check-in.
     grantor_commitment: Option<[u8; 32]>,
     check_in_interval_ns: u64,
     grace_ns: u64,
     /// 0 = no check-in yet, so the clock has not started.
     last_check_in_ns: u64,
-    /// Cache only, updated by `poke_expiry`. Guards read `pending_status()`.
+    /// Cache only, updated by `poke_expiry` and `check_in`. Guards read `pending_status()`.
     status: Status,
+    /// Every attestation nonce accepted so far, for replay protection.
+    used_nonces: LookupSet<u64>,
 }
 
 #[near]
@@ -60,6 +105,7 @@ impl Estate {
             grace_ns: grace_sec as u64 * NS_PER_SEC,
             last_check_in_ns: 0, // the first check_in starts the clock, as on Sepolia
             status: Status::Active,
+            used_nonces: LookupSet::new(Key::Nonces),
         }
     }
 
@@ -68,6 +114,25 @@ impl Estate {
     }
 
     // ---------- liveness ----------
+
+    /// The grantor proves they're alive with a Selfie Check attestation. The first check-in binds
+    /// their face commitment; later ones must match it. Allowed in Grace, which is the recovery
+    /// path; refused once the clock says Unlocked, poked or not.
+    pub fn check_in(&mut self, attestation: Attestation, signature: Base64VecU8) {
+        self.only_grantor();
+        self.not_unlocked();
+        let c = self.verify(&attestation, &signature, ACTION_CHECKIN);
+        match self.grantor_commitment {
+            None => self.grantor_commitment = Some(c), // bind to the first face seen
+            Some(bound) => require!(bound == c, "wrong human"), // = LivenessAttestor__WrongHuman
+        }
+        self.last_check_in_ns = env::block_timestamp();
+        self.status = Status::Active;
+        log_event(
+            "checked_in",
+            &format!(r#"{{"at":"{}"}}"#, self.last_check_in_ns),
+        );
+    }
 
     /// Permissionless, like `pokeExpiry()`. Stores the computed status. Idempotent.
     pub fn poke_expiry(&mut self) -> Status {
@@ -122,7 +187,58 @@ impl Estate {
         (U64(grace_at), U64(grace_at + self.grace_ns))
     }
 
+    pub fn nonce_used(&self, nonce: U64) -> bool {
+        self.used_nonces.contains(&nonce.0)
+    }
+
+    /// The grantor's bound face commitment, base64. `None` until the first check-in.
+    pub fn commitment_of(&self) -> Option<Base64VecU8> {
+        self.grantor_commitment.map(|c| Base64VecU8(c.to_vec()))
+    }
+
     // ---------- internals ----------
+
+    /// Checks an attestation for `action`, signed for this estate and this caller, and burns its
+    /// nonce. Returns the commitment (who the human is).
+    fn verify(&mut self, a: &Attestation, sig: &Base64VecU8, action: u8) -> [u8; 32] {
+        require!(a.action == action, "wrong action");
+        let now = env::block_timestamp();
+        require!(a.expiry_ns.0 > now, "attestation expired");
+        require!(
+            a.expiry_ns.0 <= now + MAX_ATTESTATION_LIFETIME_NS,
+            "attestation lives too long"
+        );
+        require!(!self.used_nonces.contains(&a.nonce.0), "nonce used");
+        let commitment: [u8; 32] = a
+            .commitment
+            .0
+            .as_slice()
+            .try_into()
+            .expect("commitment != 32 bytes");
+        require!(commitment != [0u8; 32], "zero commitment");
+        let msg = near_sdk::borsh::to_vec(&SignedPayload {
+            domain: DOMAIN.into(),
+            estate_id: env::current_account_id(),
+            subject: env::predecessor_account_id(),
+            action,
+            heir_label: a.heir_label.clone(),
+            commitment,
+            nonce: a.nonce.0,
+            expiry_ns: a.expiry_ns.0,
+        })
+        .unwrap();
+        let sig: [u8; 64] = sig.0.as_slice().try_into().expect("signature != 64 bytes");
+        require!(
+            env::ed25519_verify(&sig, &msg, &self.attestor_pk),
+            "invalid signature"
+        );
+        self.used_nonces.insert(a.nonce.0);
+        commitment
+    }
+
+    fn not_unlocked(&self) {
+        require!(self.pending_status() != Status::Unlocked, "estate unlocked");
+    }
 
     /// The status the clock says right now, whatever the cache holds.
     fn pending_status(&self) -> Status {
@@ -190,6 +306,190 @@ mod fuzz;
 mod invariant;
 
 #[cfg(test)]
+mod golden;
+
+/// Checkpoint 4: check-in and attestations.
+#[cfg(test)]
+mod check_in_tests {
+    use super::testing::*;
+    use super::*;
+
+    fn b64(bytes: [u8; 32]) -> Base64VecU8 {
+        Base64VecU8(bytes.to_vec())
+    }
+
+    /// Submits `att` as the caller `att.subject` at `now`.
+    fn submit(e: &mut Estate, att: &Att, now: u64) {
+        set_context(att.subject.clone(), now);
+        let (attestation, signature) = att.sign();
+        e.check_in(attestation, signature);
+    }
+
+    #[test]
+    fn first_check_in_binds_the_face_and_starts_the_clock() {
+        let mut e = new_estate();
+        check_in_at(&mut e, CHECKED_IN_AT, 1);
+
+        assert_eq!(e.commitment_of(), Some(b64(GRANTOR_FACE)));
+        assert!(e.nonce_used(U64(1)));
+        assert!(!e.nonce_used(U64(2)));
+        let grace_at = CHECKED_IN_AT + INTERVAL_SEC as u64 * NS_PER_SEC;
+        let unlock_at = grace_at + GRACE_SEC as u64 * NS_PER_SEC;
+        assert_eq!(e.deadlines_of(), (U64(grace_at), U64(unlock_at)));
+        assert_eq!(e.status_of(), Status::Active);
+    }
+
+    #[test]
+    fn a_second_check_in_from_the_same_face_moves_the_deadlines() {
+        let mut e = new_estate();
+        check_in_at(&mut e, CHECKED_IN_AT, 1);
+        let later = CHECKED_IN_AT + 10 * 86_400 * NS_PER_SEC;
+        check_in_at(&mut e, later, 2);
+
+        assert_eq!(e.last_check_in_ns, later);
+        assert_eq!(
+            e.deadlines_of().0,
+            U64(later + INTERVAL_SEC as u64 * NS_PER_SEC)
+        );
+        assert_eq!(e.commitment_of(), Some(b64(GRANTOR_FACE)));
+    }
+
+    #[test]
+    #[should_panic(expected = "wrong human")]
+    fn a_different_face_is_refused() {
+        let mut e = new_estate();
+        check_in_at(&mut e, CHECKED_IN_AT, 1);
+        let mut att = Att::check_in(2, CHECKED_IN_AT);
+        att.commitment = OTHER_FACE;
+        submit(&mut e, &att, CHECKED_IN_AT);
+    }
+
+    #[test]
+    #[should_panic(expected = "nonce used")]
+    fn a_nonce_cannot_be_used_twice() {
+        let mut e = new_estate();
+        check_in_at(&mut e, CHECKED_IN_AT, 1);
+        check_in_at(&mut e, CHECKED_IN_AT + NS_PER_SEC, 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "attestation expired")]
+    fn an_expired_attestation_is_refused() {
+        let mut e = new_estate();
+        let mut att = Att::check_in(1, CHECKED_IN_AT);
+        att.expiry_ns = CHECKED_IN_AT; // expiry must be strictly in the future
+        submit(&mut e, &att, CHECKED_IN_AT);
+    }
+
+    #[test]
+    #[should_panic(expected = "attestation lives too long")]
+    fn an_attestation_over_30_minutes_is_refused() {
+        let mut e = new_estate();
+        let mut att = Att::check_in(1, CHECKED_IN_AT);
+        att.expiry_ns = CHECKED_IN_AT + MAX_ATTESTATION_LIFETIME_NS + 1;
+        submit(&mut e, &att, CHECKED_IN_AT);
+    }
+
+    #[test]
+    fn an_attestation_of_exactly_30_minutes_is_accepted() {
+        let mut e = new_estate();
+        let mut att = Att::check_in(1, CHECKED_IN_AT);
+        att.expiry_ns = CHECKED_IN_AT + MAX_ATTESTATION_LIFETIME_NS;
+        submit(&mut e, &att, CHECKED_IN_AT);
+        assert_eq!(e.commitment_of(), Some(b64(GRANTOR_FACE)));
+    }
+
+    #[test]
+    #[should_panic(expected = "wrong action")]
+    fn the_wrong_action_is_refused() {
+        let mut e = new_estate();
+        let mut att = Att::check_in(1, CHECKED_IN_AT);
+        att.action = 1; // a claim attestation
+        submit(&mut e, &att, CHECKED_IN_AT);
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid signature")]
+    fn a_signature_for_another_estate_is_refused() {
+        let mut e = new_estate();
+        let mut att = Att::check_in(1, CHECKED_IN_AT);
+        att.estate = other_estate_id();
+        submit(&mut e, &att, CHECKED_IN_AT);
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid signature")]
+    fn a_signature_for_another_caller_is_refused() {
+        let mut e = new_estate();
+        let mut att = Att::check_in(1, CHECKED_IN_AT);
+        att.subject = stranger(); // signed for mallory...
+        set_context(grantor(), CHECKED_IN_AT); // ...but submitted by the grantor
+        let (attestation, signature) = att.sign();
+        e.check_in(attestation, signature);
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid signature")]
+    fn a_signature_from_another_key_is_refused() {
+        let mut e = new_estate();
+        let att = Att::check_in(1, CHECKED_IN_AT).signed_by_another_key();
+        submit(&mut e, &att, CHECKED_IN_AT);
+    }
+
+    #[test]
+    #[should_panic(expected = "not the grantor")]
+    fn a_non_grantor_is_refused() {
+        let mut e = new_estate();
+        let mut att = Att::check_in(1, CHECKED_IN_AT);
+        att.subject = stranger();
+        submit(&mut e, &att, CHECKED_IN_AT);
+    }
+
+    #[test]
+    fn a_check_in_in_grace_brings_the_estate_back_to_active() {
+        let mut e = new_estate();
+        check_in_at(&mut e, CHECKED_IN_AT, 1);
+        let (grace_at, _) = e.deadlines_of();
+        set_context(stranger(), grace_at.0);
+        assert_eq!(e.poke_expiry(), Status::Grace);
+
+        check_in_at(&mut e, grace_at.0, 2);
+        assert_eq!(e.status_of(), Status::Active);
+        assert_eq!(e.status, Status::Active);
+        assert_eq!(e.last_check_in_ns, grace_at.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "estate unlocked")]
+    fn a_check_in_after_an_unpoked_lapse_is_refused() {
+        let mut e = new_estate();
+        check_in_at(&mut e, CHECKED_IN_AT, 1);
+        let (_, unlock_at) = e.deadlines_of();
+        assert_eq!(e.status, Status::Active); // nobody poked
+        check_in_at(&mut e, unlock_at.0, 2);
+    }
+
+    #[test]
+    #[should_panic(expected = "zero commitment")]
+    fn an_all_zero_commitment_is_refused() {
+        let mut e = new_estate();
+        let mut att = Att::check_in(1, CHECKED_IN_AT);
+        att.commitment = [0; 32];
+        submit(&mut e, &att, CHECKED_IN_AT);
+    }
+
+    #[test]
+    #[should_panic(expected = "signature != 64 bytes")]
+    fn a_short_signature_is_refused() {
+        let mut e = new_estate();
+        set_context(grantor(), CHECKED_IN_AT);
+        let (attestation, mut signature) = Att::check_in(1, CHECKED_IN_AT).sign();
+        signature.0.pop();
+        e.check_in(attestation, signature);
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::testing::*;
     use super::*;
@@ -199,7 +499,7 @@ mod tests {
         let e = new_estate();
         assert_eq!(e.factory, factory());
         assert_eq!(e.grantor, grantor());
-        assert_eq!(e.attestor_pk, [0u8; 32]);
+        assert_eq!(e.attestor_pk, attestor_pk_bytes());
         assert_eq!(e.check_in_interval_ns, INTERVAL_SEC as u64 * NS_PER_SEC);
         assert_eq!(e.grace_ns, GRACE_SEC as u64 * NS_PER_SEC);
         assert_eq!(e.status_of(), Status::Active);
@@ -212,7 +512,7 @@ mod tests {
         set_context(factory(), 0);
         Estate::new(
             grantor(),
-            ATTESTOR_PK.into(),
+            attestor_pk(),
             MIN_CHECK_IN_INTERVAL_SEC - 1,
             GRACE_SEC,
         );
@@ -224,7 +524,7 @@ mod tests {
         set_context(factory(), 0);
         Estate::new(
             grantor(),
-            ATTESTOR_PK.into(),
+            attestor_pk(),
             MAX_CHECK_IN_INTERVAL_SEC + 1,
             GRACE_SEC,
         );
@@ -234,24 +534,14 @@ mod tests {
     #[should_panic(expected = "bad grace")]
     fn new_refuses_grace_below_the_minimum() {
         set_context(factory(), 0);
-        Estate::new(
-            grantor(),
-            ATTESTOR_PK.into(),
-            INTERVAL_SEC,
-            MIN_GRACE_SEC - 1,
-        );
+        Estate::new(grantor(), attestor_pk(), INTERVAL_SEC, MIN_GRACE_SEC - 1);
     }
 
     #[test]
     #[should_panic(expected = "bad grace")]
     fn new_refuses_grace_above_the_maximum() {
         set_context(factory(), 0);
-        Estate::new(
-            grantor(),
-            ATTESTOR_PK.into(),
-            INTERVAL_SEC,
-            MAX_GRACE_SEC + 1,
-        );
+        Estate::new(grantor(), attestor_pk(), INTERVAL_SEC, MAX_GRACE_SEC + 1);
     }
 
     #[test]

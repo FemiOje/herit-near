@@ -15,6 +15,7 @@ near-contract-standards = { workspace = true }
 [dev-dependencies]
 near-sdk = { workspace = true, features = ["unit-testing"] }
 proptest = "1"
+ed25519-dalek = "2"
 
 [package.metadata.near.reproducible_build]
 # Values from near-sdk-rs/examples/fungible-token/ft/Cargo.toml at tag near-sdk-v5.30.1.

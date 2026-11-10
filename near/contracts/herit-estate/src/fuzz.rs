@@ -28,7 +28,7 @@ proptest! {
     ) {
         set_context(factory(), 0);
         let opened = std::panic::catch_unwind(|| {
-            Estate::new(grantor(), ATTESTOR_PK.into(), interval, grace)
+            Estate::new(grantor(), attestor_pk(), interval, grace)
         })
         .is_ok();
         prop_assert_eq!(opened, in_bounds(interval, grace));
@@ -66,5 +66,78 @@ proptest! {
             Status::Active
         };
         prop_assert_eq!(e.status_of(), expected);
+    }
+}
+
+// ---------- Checkpoint 4: attestations ----------
+
+/// Changes exactly one thing about a valid check-in: what was signed, or what is submitted.
+fn tamper(signed: &mut Att, submitted: &mut Att, which: u8, salt: u64) {
+    match which {
+        0 => signed.estate = other_estate_id(),
+        1 => signed.subject = stranger(),
+        2 => submitted.action = 1 + (salt % 255) as u8,
+        3 => submitted.heir_label = Some(format!("h{salt}")),
+        4 => submitted.commitment[(salt % 32) as usize] ^= 1 + (salt % 255) as u8,
+        5 => submitted.nonce = submitted.nonce.wrapping_add(1 + salt % 1_000),
+        6 => submitted.expiry_ns -= 1 + salt % (10 * 60 * NS_PER_SEC), // still inside the window
+        _ => *signed = signed.clone().signed_by_another_key(),
+    }
+}
+
+proptest! {
+    #[test]
+    fn any_valid_attestation_is_accepted(
+        nonce in any::<u64>(),
+        lifetime in 1..=MAX_ATTESTATION_LIFETIME_NS,
+        face in any::<[u8; 32]>().prop_filter("non-zero", |f| *f != [0; 32]),
+        now in CHECKED_IN_AT..=CHECKED_IN_AT * 2,
+    ) {
+        let mut e = new_estate();
+        let mut att = Att::check_in(nonce, now);
+        att.expiry_ns = now + lifetime;
+        att.commitment = face;
+        set_context(grantor(), now);
+        let (attestation, signature) = att.sign();
+        e.check_in(attestation, signature);
+        prop_assert_eq!(e.commitment_of().map(|c| c.0), Some(face.to_vec()));
+        prop_assert!(e.nonce_used(U64(nonce)));
+    }
+
+    #[test]
+    fn changing_any_signed_field_is_refused(
+        which in 0u8..8,
+        salt in any::<u64>(),
+        nonce in any::<u64>(),
+    ) {
+        let mut e = new_estate();
+        let mut signed = Att::check_in(nonce, CHECKED_IN_AT);
+        let mut submitted = signed.clone();
+        tamper(&mut signed, &mut submitted, which, salt);
+
+        let (_, signature) = signed.sign();
+        let attestation = submitted.attestation();
+        set_context(grantor(), CHECKED_IN_AT);
+        let ok = call_reverting(&mut e, |e| e.check_in(attestation, signature));
+
+        prop_assert!(!ok, "tampering with field {} was accepted", which);
+        prop_assert!(e.commitment_of().is_none());
+        prop_assert!(!e.nonce_used(U64(signed.nonce)));
+        prop_assert!(!e.nonce_used(U64(submitted.nonce)));
+    }
+
+    #[test]
+    fn random_signatures_never_verify(
+        lo in any::<[u8; 32]>(),
+        hi in any::<[u8; 32]>(),
+        nonce in any::<u64>(),
+    ) {
+        let mut e = new_estate();
+        let attestation = Att::check_in(nonce, CHECKED_IN_AT).attestation();
+        let signature = Base64VecU8([lo, hi].concat());
+        set_context(grantor(), CHECKED_IN_AT);
+        let ok = call_reverting(&mut e, |e| e.check_in(attestation, signature));
+        prop_assert!(!ok);
+        prop_assert!(!e.nonce_used(U64(nonce)));
     }
 }
