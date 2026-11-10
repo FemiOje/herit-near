@@ -15,3 +15,6 @@ docs/
 !.env.example
 
 frontend/.next
+
+# Rust build output
+target/
