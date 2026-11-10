@@ -18,6 +18,14 @@ name = "estate_check_in"
 path = "estate_check_in.rs"
 
 [[test]]
+name = "estate_heirs"
+path = "estate_heirs.rs"
+
+[[test]]
+name = "estate_vault"
+path = "estate_vault.rs"
+
+[[test]]
 name = "fork_smoke"
 path = "fork_smoke.rs"
 

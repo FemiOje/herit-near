@@ -180,3 +180,67 @@ fn restore_storage(storage: &Storage) {
         near_sdk::env::storage_write(key, value);
     }
 }
+
+// ---------- heirs (Checkpoint 6) ----------
+
+/// Enough for any heir: the seed plus far more storage than one record needs.
+pub const HEIR_DEPOSIT: near_sdk::NearToken = near_sdk::NearToken::from_near(1);
+
+/// Like `set_context`, with `deposit` attached.
+pub fn set_context_paying(caller: AccountId, now_ns: u64, deposit: near_sdk::NearToken) {
+    testing_env!(
+        VMContextBuilder::new()
+            .current_account_id(estate_id())
+            .predecessor_account_id(caller)
+            .block_timestamp(now_ns)
+            .attached_deposit(deposit)
+            .build()
+    );
+}
+
+/// The estate calling itself back, with the account creation's outcome as the promise result.
+pub fn set_callback_context(created: bool) {
+    let result = if created {
+        near_sdk::PromiseResult::Successful(vec![])
+    } else {
+        near_sdk::PromiseResult::Failed
+    };
+    testing_env!(
+        VMContextBuilder::new()
+            .current_account_id(estate_id())
+            .predecessor_account_id(estate_id())
+            .build(),
+        near_sdk::test_vm_config(),
+        near_sdk::RuntimeFeesConfig::test(),
+        Default::default(),
+        vec![result],
+    );
+}
+
+/// A distinct heir public key per `n`, in NEAR's `ed25519:<base58>` form.
+pub fn heir_key(n: u8) -> near_sdk::PublicKey {
+    let pk = SigningKey::from_bytes(&[100 + n; 32])
+        .verifying_key()
+        .to_bytes();
+    format!("ed25519:{}", near_sdk::bs58::encode(pk).into_string())
+        .parse()
+        .unwrap()
+}
+
+/// `<label>.alice.herit-near.testnet`.
+pub fn heir_id(label: &str) -> AccountId {
+    format!("{label}.{}", estate_id()).parse().unwrap()
+}
+
+/// The grantor adds `label` with `bps`, paying `HEIR_DEPOSIT`, at `now_ns`.
+pub fn add_heir_at(estate: &mut Estate, label: &str, bps: u16, now_ns: u64) {
+    set_context_paying(grantor(), now_ns, HEIR_DEPOSIT);
+    let _ = estate.add_heir(label.into(), heir_key(1), "son".into(), bps);
+}
+
+/// Adds `label` and runs the creation callback as a success.
+pub fn add_created_heir(estate: &mut Estate, label: &str, bps: u16) {
+    add_heir_at(estate, label, bps, 0);
+    set_callback_context(true);
+    assert!(estate.on_heir_created(label.into(), near_sdk::json_types::U128(0)));
+}

@@ -2,13 +2,22 @@
 //!
 //! Checkpoint 3: the liveness clock, Active → Grace → Unlocked, and never back from Unlocked.
 //! Checkpoint 4: `check_in` with a World ID attestation, which restarts the clock.
-//! Heirs, the vault and claims build on this in later checkpoints.
+//! Checkpoint 6: heirs, each a real account `<label>.<estate>` that only the heir holds a key to.
+//! Checkpoint 7: the vault: NEAR and NEP-141 deposits, each heir's share of each asset, and
+//! withdrawals that need a fresh Selfie Check.
+//! Claims build on this in later checkpoints.
 
-use near_sdk::json_types::{Base64VecU8, U64};
-use near_sdk::store::LookupSet;
-use near_sdk::{AccountId, BorshStorageKey, PanicOnDefault, env, near, require};
+use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
+use near_sdk::json_types::{Base64VecU8, U64, U128};
+use near_sdk::store::{IterableMap, LookupMap, LookupSet, Vector};
+use near_sdk::{
+    AccountId, BorshStorageKey, Gas, NearToken, PanicOnDefault, Promise, PromiseOrValue, PublicKey,
+    assert_one_yocto, env, ext_contract, is_promise_success, near, require,
+};
 
 pub const ACTION_CHECKIN: u8 = 0;
+/// A withdrawal: the grantor's own Selfie Check, so a stolen key alone can't move funds.
+pub const ACTION_WITHDRAW: u8 = 2;
 const DOMAIN: &str = "herit-near:v1";
 // Same bounds as HeritRegistry on Sepolia.
 const MIN_CHECK_IN_INTERVAL_SEC: u32 = 120;
@@ -18,6 +27,29 @@ const MAX_GRACE_SEC: u32 = 14 * 86_400;
 const NS_PER_SEC: u64 = 1_000_000_000;
 /// Same 30-minute cap as Sepolia.
 const MAX_ATTESTATION_LIFETIME_NS: u64 = 30 * 60 * NS_PER_SEC;
+/// 100% in basis points.
+const BPS: u32 = 10_000;
+/// Keeps every loop over heirs, and a claim's payouts, well inside the gas limit.
+const MAX_HEIRS: u32 = 10;
+/// Sent to each new heir account: its storage, plus gas for the heir's own claim later.
+const HEIR_ACCOUNT_SEED: NearToken = NearToken::from_millinear(100);
+const MAX_RELATIONSHIP_LEN: usize = 32;
+const HEIR_CALLBACK_GAS: Gas = Gas::from_tgas(10);
+/// Ceiling on distinct assets per estate, counting NEAR, as `MAX_TOKENS` in `HeritVault`. The
+/// unlock snapshot and every claim loop over the whole list, so it must stay small.
+pub const MAX_TOKENS: u32 = 10;
+/// Ceiling on distinct assets with at least one share override, as in `HeritRegistry`.
+/// `add_heir` walks the list, so it must stay small.
+pub const MAX_OVERRIDE_TOKENS: u32 = 10;
+
+/// What a NEP-145 token charges to register an account; 0.00125 NEAR covers the standard
+/// implementation. Any excess is refunded by the token to the estate.
+const TOKEN_REGISTRATION: NearToken = NearToken::from_micronear(1_250);
+const TOKEN_CALL_GAS: Gas = Gas::from_tgas(10);
+
+/// An asset the vault holds: `None` is native NEAR (`NATIVE` in `HeritVault`), `Some(token)` a
+/// NEP-141 token contract.
+pub type Asset = Option<AccountId>;
 
 #[near(serializers = [borsh, json])]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -57,11 +89,49 @@ pub struct Attestation {
     pub expiry_ns: U64,
 }
 
+/// One heir, stored under its label: `son` for `son.<estate>`.
+#[near(serializers = [borsh])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Heir {
+    pub account_id: AccountId,
+    /// Free text the grantor chooses, such as "son". Shown on the heir's credential.
+    pub relationship: String,
+    /// The heir's share of each asset in basis points, unless overridden per asset (Checkpoint 7).
+    pub default_bps: u16,
+    /// False until the heir's account exists. Until then the heir can't be removed, so the
+    /// creation callback always finds the record it was made for.
+    pub created: bool,
+}
+
+/// An heir as the views return it.
+#[near(serializers = [json])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct HeirView {
+    pub label: String,
+    pub account_id: AccountId,
+    pub relationship: String,
+    pub default_bps: u16,
+    pub created: bool,
+}
+
 /// Storage prefixes. A variant's position is its prefix, so only ever append.
 #[derive(BorshStorageKey)]
 #[near]
 enum Key {
     Nonces,
+    Heirs,
+    Balances,
+    Tokens,
+    Shares,
+    OverrideAssets,
+}
+
+/// The NEP-141 and NEP-145 calls the estate makes on a token contract.
+#[ext_contract(ext_ft)]
+#[allow(dead_code)]
+trait FungibleToken {
+    fn storage_deposit(&mut self, account_id: Option<AccountId>, registration_only: Option<bool>);
+    fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>);
 }
 
 #[near(contract_state)]
@@ -82,6 +152,20 @@ pub struct Estate {
     status: Status,
     /// Every attestation nonce accepted so far, for replay protection.
     used_nonces: LookupSet<u64>,
+    /// label -> heir. At most `MAX_HEIRS`.
+    heirs: IterableMap<String, Heir>,
+    /// What the estate holds of each asset (`s_balances` in `HeritVault`). Counted here, never
+    /// read from the account balance, which also pays for storage and collects gas rewards.
+    balances: LookupMap<Asset, u128>,
+    /// Every asset the estate has held, in the order first deposited (`s_tokens`). Never pruned:
+    /// an asset withdrawn to zero stays listed. At most `MAX_TOKENS`.
+    tokens: Vector<Asset>,
+    /// (label, asset) -> bps: an heir's share of one asset, overriding their `default_bps`
+    /// (`s_share` + `s_hasOverride` in `HeritRegistry`: an entry exists exactly when overridden).
+    shares: LookupMap<(String, Asset), u16>,
+    /// Every asset with at least one override (`s_overriddenTokens`), so `add_heir` can check a new
+    /// heir's default against each asset's own total. At most `MAX_OVERRIDE_TOKENS`.
+    override_assets: Vector<Asset>,
 }
 
 #[near]
@@ -106,6 +190,11 @@ impl Estate {
             last_check_in_ns: 0, // the first check_in starts the clock, as on Sepolia
             status: Status::Active,
             used_nonces: LookupSet::new(Key::Nonces),
+            heirs: IterableMap::new(Key::Heirs),
+            balances: LookupMap::new(Key::Balances),
+            tokens: Vector::new(Key::Tokens),
+            shares: LookupMap::new(Key::Shares),
+            override_assets: Vector::new(Key::OverrideAssets),
         }
     }
 
@@ -143,7 +232,7 @@ impl Estate {
         let now = env::block_timestamp();
         match s {
             Status::Grace => log_event("entered_grace", &format!(r#"{{"at":"{now}"}}"#)),
-            // Checkpoint 8 adds the escrow snapshot here.
+            // Checkpoint 8 snapshots the balances here.
             Status::Unlocked => log_event("unlocked", &format!(r#"{{"at":"{now}"}}"#)),
             Status::Active => {}
         }
@@ -172,7 +261,315 @@ impl Estate {
         );
     }
 
+    // ---------- vault ----------
+
+    /// The grantor puts NEAR into the estate (`depositETH`). Allowed until unlock, Grace included.
+    ///
+    /// Credits what arrives, as `HeritVault` does: the first deposit lists NEAR, and the storage
+    /// that listing takes comes out of the amount credited. So the books never promise the heirs
+    /// NEAR the estate has spent on storage.
+    #[payable]
+    pub fn deposit(&mut self) {
+        self.only_grantor();
+        self.not_unlocked();
+        let amount = env::attached_deposit().as_yoctonear();
+        require!(amount > 0, "attach the NEAR to deposit");
+        let storage_cost = self.list_asset(&None);
+        require!(
+            amount > storage_cost,
+            "deposit too small to cover its storage"
+        );
+        let credited = amount - storage_cost;
+        self.credit(&None, credited);
+        log_event(
+            "deposited",
+            &format!(r#"{{"asset":"near","amount":"{credited}"}}"#),
+        );
+    }
+
+    /// Lists a NEP-141 token and registers the estate with it, so the grantor can deposit it.
+    ///
+    /// The NEAR-only step before `depositERC20`'s first deposit: an account must be registered with
+    /// a token contract (and pay that storage) before it can receive the token, and a token
+    /// transfer can't carry the NEAR for it. Attach the listing's storage plus
+    /// `TOKEN_REGISTRATION`; the surplus is refunded. Counts towards `MAX_TOKENS`. If registration
+    /// fails, `on_token_registered` unlists the token and refunds the grantor.
+    #[payable]
+    pub fn add_token(&mut self, token: AccountId) -> Promise {
+        self.only_grantor();
+        self.not_unlocked();
+        let asset = Some(token.clone());
+        require!(!self.is_listed(&asset), "token already added");
+        let storage_cost = self.list_asset(&asset);
+        let registration = TOKEN_REGISTRATION.as_yoctonear();
+        let paid = env::attached_deposit().as_yoctonear();
+        require!(
+            paid >= storage_cost + registration,
+            "attach more NEAR for storage and the token registration"
+        );
+        if paid > storage_cost + registration {
+            Promise::new(env::predecessor_account_id())
+                .transfer(NearToken::from_yoctonear(
+                    paid - storage_cost - registration,
+                ))
+                .detach();
+        }
+        ext_ft::ext(token.clone())
+            .with_attached_deposit(TOKEN_REGISTRATION)
+            .with_static_gas(TOKEN_CALL_GAS)
+            .storage_deposit(Some(env::current_account_id()), Some(true))
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(TOKEN_CALL_GAS)
+                    .on_token_registered(token, U128(storage_cost + registration)),
+            )
+    }
+
+    /// Runs after the registration. On failure the registration fee has come back to this estate,
+    /// so the token is unlisted and `refund` goes to the grantor.
+    #[private]
+    pub fn on_token_registered(&mut self, token: AccountId, refund: U128) -> bool {
+        if is_promise_success() {
+            log_event("token_added", &format!(r#"{{"token":"{token}"}}"#));
+            true
+        } else {
+            self.unlist_asset(&Some(token.clone()));
+            Promise::new(self.grantor.clone())
+                .transfer(NearToken::from_yoctonear(refund.0))
+                .detach();
+            log_event("token_failed", &format!(r#"{{"token":"{token}"}}"#));
+            false
+        }
+    }
+
+    /// The grantor takes `amount` of `asset` (`null` for NEAR) back out (`withdraw` in
+    /// `HeritVault`). Grantor only, before unlock, Grace included: the way out for a grantor who
+    /// returns after a missed check-in.
+    ///
+    /// New on NEAR: it also needs a fresh `ACTION_WITHDRAW` Selfie Check from the grantor's bound
+    /// face, so a stolen key alone can move nothing. Attach exactly 1 yoctoNEAR, which only a
+    /// full-access key can do and which pays the token transfer's own 1 yoctoNEAR.
+    ///
+    /// The balance is debited before the money moves (`_debit` before `_send`). The transfer is
+    /// asynchronous, so if it fails `on_withdrawn` credits the amount back.
+    #[payable]
+    pub fn withdraw(
+        &mut self,
+        asset: Asset,
+        amount: U128,
+        attestation: Attestation,
+        signature: Base64VecU8,
+    ) -> Promise {
+        assert_one_yocto();
+        self.only_grantor();
+        self.not_unlocked();
+        require!(
+            attestation.heir_label.is_none(),
+            "a withdrawal names no heir"
+        );
+        let face = self.verify(&attestation, &signature, ACTION_WITHDRAW);
+        match self.grantor_commitment {
+            None => env::panic_str("check in first: no face is bound yet"),
+            Some(bound) => require!(bound == face, "wrong human"),
+        }
+        require!(amount.0 > 0, "zero amount");
+        let available = self.balances.get(&asset).copied().unwrap_or(0);
+        require!(amount.0 <= available, "insufficient balance");
+        self.balances.insert(asset.clone(), available - amount.0);
+
+        let grantor = self.grantor.clone();
+        let send = match &asset {
+            None => Promise::new(grantor).transfer(NearToken::from_yoctonear(amount.0)),
+            Some(token) => ext_ft::ext(token.clone())
+                .with_attached_deposit(NearToken::from_yoctonear(1))
+                .with_static_gas(TOKEN_CALL_GAS)
+                .ft_transfer(grantor, amount, Some("herit withdrawal".into())),
+        };
+        send.then(
+            Self::ext(env::current_account_id())
+                .with_static_gas(TOKEN_CALL_GAS)
+                .on_withdrawn(asset, amount),
+        )
+    }
+
+    /// Runs after the transfer. Logs `withdrawn`, or credits the amount back and logs
+    /// `withdraw_failed`.
+    #[private]
+    pub fn on_withdrawn(&mut self, asset: Asset, amount: U128) -> bool {
+        let asset_name = asset.clone().map_or("near".to_string(), |t| t.to_string());
+        let data = format!(r#"{{"asset":"{asset_name}","amount":"{}"}}"#, amount.0);
+        if is_promise_success() {
+            log_event("withdrawn", &data);
+            true
+        } else {
+            self.credit(&asset, amount.0);
+            log_event("withdraw_failed", &data);
+            false
+        }
+    }
+
+    // ---------- heirs ----------
+
+    /// Creates `<label>.<this estate>`, such as `son.alice.herit-near.testnet`, as a real account
+    /// holding only `public_key`. The heir generates that key themselves, so the grantor never holds
+    /// the private half. Only this estate can create the account: NEAR lets an account create only
+    /// its own sub-accounts.
+    ///
+    /// Attach NEAR for the heir record's storage plus `HEIR_ACCOUNT_SEED`; the surplus is refunded.
+    /// If the account can't be created (the name already exists), `on_heir_created` undoes the
+    /// record and refunds the grantor.
+    #[payable]
+    pub fn add_heir(
+        &mut self,
+        label: String,
+        public_key: PublicKey,
+        relationship: String,
+        default_bps: u16,
+    ) -> Promise {
+        self.only_grantor();
+        self.not_unlocked();
+        let account_id = heir_account(&label);
+        validate_relationship(&relationship);
+        require!(!self.heirs.contains_key(&label), "label taken");
+        require!(self.heirs.len() < MAX_HEIRS, "too many heirs");
+        require!(
+            self.total_default_bps() + default_bps as u32 <= BPS,
+            "shares exceed 100%"
+        );
+        // The defaults' total doesn't see overrides: an asset with overrides has its own total,
+        // and this heir's default lands on top of it (as in `recordHeir`).
+        for asset in self.override_assets.iter() {
+            require!(
+                self.total_bps(asset) + default_bps as u32 <= BPS,
+                "shares exceed 100%"
+            );
+        }
+
+        let before = env::storage_usage();
+        self.heirs.insert(
+            label.clone(),
+            Heir {
+                account_id: account_id.clone(),
+                relationship,
+                default_bps,
+                created: false,
+            },
+        );
+        self.heirs.flush(); // so storage_usage() sees the write
+        let seed = HEIR_ACCOUNT_SEED.as_yoctonear();
+        let storage_cost = charge_storage(before, seed);
+
+        Promise::new(account_id)
+            .create_account()
+            .transfer(HEIR_ACCOUNT_SEED)
+            .add_full_access_key(public_key)
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(HEIR_CALLBACK_GAS)
+                    .on_heir_created(label, U128(storage_cost + seed)),
+            )
+    }
+
+    /// Runs after the account creation. On success the heir is confirmed. On failure the seed has
+    /// come back to this estate, so the record is removed and `refund` goes to the grantor.
+    #[private]
+    pub fn on_heir_created(&mut self, label: String, refund: U128) -> bool {
+        if is_promise_success() {
+            let heir = self.heirs.get_mut(&label).expect("no such heir");
+            heir.created = true;
+            let account = heir.account_id.clone();
+            log_event(
+                "heir_added",
+                &format!(r#"{{"label":"{label}","account":"{account}"}}"#),
+            );
+            true
+        } else {
+            self.heirs.remove(&label);
+            self.clear_shares(&label);
+            Promise::new(self.grantor.clone())
+                .transfer(NearToken::from_yoctonear(refund.0))
+                .detach();
+            log_event("heir_failed", &format!(r#"{{"label":"{label}"}}"#));
+            false
+        }
+    }
+
+    /// Drops an heir before unlock. Their account survives, because this estate holds no key to
+    /// it, so the same label can't be added again: creating the account would fail and roll back.
+    pub fn remove_heir(&mut self, label: String) {
+        self.only_grantor();
+        self.not_unlocked();
+        let heir = self.heirs.get(&label).expect("no such heir");
+        require!(heir.created, "heir account still being created");
+        self.heirs.remove(&label);
+        self.clear_shares(&label);
+        log_event("heir_removed", &format!(r#"{{"label":"{label}"}}"#));
+    }
+
+    /// Sets `label`'s share of `asset` (`null` for NEAR) to `bps`, overriding their default for that
+    /// asset only (`setShare`). The asset's total after the change must stay at or under 100%.
+    ///
+    /// `#[payable]`: a new override is new storage, paid by the grantor, never out of the heirs'
+    /// NEAR. Changing an existing override costs nothing. The surplus is refunded.
+    #[payable]
+    pub fn set_share(&mut self, label: String, asset: Asset, bps: u16) {
+        self.only_grantor();
+        self.not_unlocked();
+        require!(self.heirs.contains_key(&label), "no such heir");
+        // The prospective total: swap this heir's current share of the asset for `bps`.
+        let prospective = self.total_bps(&asset) - self.share(&label, &asset) as u32 + bps as u32;
+        require!(prospective <= BPS, "shares exceed 100%");
+
+        let before = env::storage_usage();
+        if !self.override_assets.iter().any(|a| a == &asset) {
+            require!(
+                self.override_assets.len() < MAX_OVERRIDE_TOKENS,
+                "too many assets with overrides"
+            );
+            self.override_assets.push(asset.clone());
+        }
+        self.shares.insert((label.clone(), asset.clone()), bps);
+        self.override_assets.flush();
+        self.shares.flush(); // so storage_usage() sees both writes
+        charge_storage(before, 0);
+
+        let asset_name = asset.map_or("near".to_string(), |t| t.to_string());
+        log_event(
+            "share_set",
+            &format!(r#"{{"label":"{label}","asset":"{asset_name}","bps":{bps}}}"#),
+        );
+    }
+
     // ---------- views ----------
+
+    /// `label`'s effective share of `asset` in bps: the override if set, else the default.
+    pub fn share_of(&self, label: String, asset: Asset) -> u16 {
+        self.share(&label, &asset)
+    }
+
+    /// The sum of every heir's effective share of `asset`, in bps. At most 10,000.
+    pub fn total_share_of(&self, asset: Asset) -> u16 {
+        self.total_bps(&asset) as u16
+    }
+
+    pub fn heirs_of(&self) -> Vec<HeirView> {
+        self.heirs.iter().map(|(l, h)| heir_view(l, h)).collect()
+    }
+
+    /// What the estate holds of `asset` (`null` for NEAR, in yoctoNEAR). Not the account balance:
+    /// that also pays for storage.
+    pub fn balance_of(&self, asset: Asset) -> U128 {
+        U128(self.balances.get(&asset).copied().unwrap_or(0))
+    }
+
+    /// Every asset the estate has held, in the order first deposited. `null` is NEAR.
+    pub fn tokens_of(&self) -> Vec<Asset> {
+        self.tokens.iter().cloned().collect()
+    }
+
+    pub fn heir_of(&self, label: String) -> Option<HeirView> {
+        self.heirs.get(&label).map(|h| heir_view(&label, h))
+    }
 
     pub fn status_of(&self) -> Status {
         self.pending_status()
@@ -236,6 +633,68 @@ impl Estate {
         commitment
     }
 
+    /// Lists `asset` the first time it's seen (`_listToken`) and returns the storage that took, in
+    /// yoctoNEAR. The cap is on the list, not the money: topping up a listed asset always works.
+    fn list_asset(&mut self, asset: &Asset) -> u128 {
+        if self.is_listed(asset) {
+            return 0;
+        }
+        require!(self.tokens.len() < MAX_TOKENS, "too many assets");
+        let before = env::storage_usage();
+        self.tokens.push(asset.clone());
+        self.balances.insert(asset.clone(), 0);
+        self.tokens.flush();
+        self.balances.flush(); // so storage_usage() sees both writes
+        (env::storage_usage() - before) as u128 * env::storage_byte_cost().as_yoctonear()
+    }
+
+    fn is_listed(&self, asset: &Asset) -> bool {
+        self.tokens.iter().any(|a| a == asset)
+    }
+
+    /// Undoes `list_asset` for a token whose registration failed. Keeps the others in order.
+    fn unlist_asset(&mut self, asset: &Asset) {
+        let kept: Vec<Asset> = self
+            .tokens
+            .iter()
+            .filter(|a| *a != asset)
+            .cloned()
+            .collect();
+        self.tokens.clear();
+        self.tokens.extend(kept);
+        self.balances.remove(asset);
+    }
+
+    fn credit(&mut self, asset: &Asset, amount: u128) {
+        *self.balances.get_mut(asset).expect("asset not listed") += amount;
+    }
+
+    /// `_effectiveShare`: the override if one is set, else the heir's default. 0 for no such heir.
+    fn share(&self, label: &str, asset: &Asset) -> u16 {
+        match self.shares.get(&(label.to_string(), asset.clone())) {
+            Some(bps) => *bps,
+            None => self.heirs.get(label).map_or(0, |h| h.default_bps),
+        }
+    }
+
+    /// `_totalBps`: every heir's effective share of `asset`, pending heirs included.
+    fn total_bps(&self, asset: &Asset) -> u32 {
+        self.heirs.keys().map(|l| self.share(l, asset) as u32).sum()
+    }
+
+    /// Drops every override `label` had, when the heir goes away.
+    fn clear_shares(&mut self, label: &str) {
+        for asset in self.override_assets.iter() {
+            self.shares.remove(&(label.to_string(), asset.clone()));
+        }
+    }
+
+    /// Counts heirs whose accounts are still being created too, so a pending heir's share is
+    /// never handed out twice.
+    fn total_default_bps(&self) -> u32 {
+        self.heirs.values().map(|h| h.default_bps as u32).sum()
+    }
+
     fn not_unlocked(&self) {
         require!(self.pending_status() != Status::Unlocked, "estate unlocked");
     }
@@ -267,6 +726,33 @@ impl Estate {
     }
 }
 
+/// NEP-141 deposits (`depositERC20`): the grantor calls `ft_transfer_call` on the token with this
+/// estate as the receiver. Refusing panics, and the token returns the whole amount to the sender.
+#[near]
+impl FungibleTokenReceiver for Estate {
+    fn ft_on_transfer(
+        &mut self,
+        sender_id: AccountId,
+        amount: U128,
+        msg: String,
+    ) -> PromiseOrValue<U128> {
+        let _ = msg;
+        let token = env::predecessor_account_id();
+        let asset = Some(token.clone());
+        require!(self.is_listed(&asset), "token not added");
+        require!(sender_id == self.grantor, "only the grantor deposits");
+        self.not_unlocked();
+        require!(amount.0 > 0, "zero amount");
+        // NEP-141 transfers exactly `amount`, so what arrives is what's credited.
+        self.credit(&asset, amount.0);
+        log_event(
+            "deposited",
+            &format!(r#"{{"asset":"{token}","amount":"{}"}}"#, amount.0),
+        );
+        PromiseOrValue::Value(U128(0)) // keep all of it
+    }
+}
+
 fn validate_timers(check_in_interval_sec: u32, grace_sec: u32) {
     require!(
         (MIN_CHECK_IN_INTERVAL_SEC..=MAX_CHECK_IN_INTERVAL_SEC).contains(&check_in_interval_sec),
@@ -276,6 +762,61 @@ fn validate_timers(check_in_interval_sec: u32, grace_sec: u32) {
         (MIN_GRACE_SEC..=MAX_GRACE_SEC).contains(&grace_sec),
         "bad grace"
     );
+}
+
+/// `<label>.<this estate>`. A label is one lowercase segment of a NEAR account id: `son`,
+/// `daughter-2`. The account id parser enforces the rest, such as the 64-character limit.
+fn heir_account(label: &str) -> AccountId {
+    require!(
+        !label.is_empty()
+            && label
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_'),
+        "label must be a single lowercase segment"
+    );
+    format!("{label}.{}", env::current_account_id())
+        .parse()
+        .unwrap_or_else(|_| env::panic_str("label is not a valid account name"))
+}
+
+/// Letters, digits, spaces and hyphens, so it can go into JSON logs and NFT metadata as is.
+fn validate_relationship(r: &str) {
+    require!(
+        !r.trim().is_empty()
+            && r.len() <= MAX_RELATIONSHIP_LEN
+            && r.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b' ' || b == b'-'),
+        "relationship must be 1-32 letters, digits, spaces or hyphens"
+    );
+}
+
+fn heir_view(label: &str, h: &Heir) -> HeirView {
+    HeirView {
+        label: label.to_string(),
+        account_id: h.account_id.clone(),
+        relationship: h.relationship.clone(),
+        default_bps: h.default_bps,
+        created: h.created,
+    }
+}
+
+/// Charges the caller for the storage written since `before`, plus `reserved` (NEAR this call
+/// sends on), and refunds the rest of the attached deposit. Returns the storage cost.
+fn charge_storage(before: u64, reserved: u128) -> u128 {
+    let used = env::storage_usage().saturating_sub(before) as u128;
+    let storage_cost = env::storage_byte_cost().as_yoctonear() * used;
+    let cost = storage_cost + reserved;
+    let paid = env::attached_deposit().as_yoctonear();
+    require!(
+        paid >= cost,
+        "attach more NEAR for storage and the heir's seed"
+    );
+    if paid > cost {
+        Promise::new(env::predecessor_account_id())
+            .transfer(NearToken::from_yoctonear(paid - cost))
+            .detach();
+    }
+    storage_cost
 }
 
 fn decode_ed25519(s: &str) -> [u8; 32] {
@@ -307,6 +848,15 @@ mod invariant;
 
 #[cfg(test)]
 mod golden;
+
+#[cfg(test)]
+mod heir_tests;
+
+#[cfg(test)]
+mod heir_invariant;
+
+#[cfg(test)]
+mod vault_tests;
 
 /// Checkpoint 4: check-in and attestations.
 #[cfg(test)]
