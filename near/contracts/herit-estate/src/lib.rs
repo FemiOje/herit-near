@@ -5,6 +5,8 @@
 //! Checkpoint 6: heirs, each a real account `<label>.<estate>` that only the heir holds a key to.
 //! Checkpoint 7: the vault: NEAR and NEP-141 deposits, each heir's share of each asset, and
 //! withdrawals that need a fresh Selfie Check.
+//! Checkpoint 8: claims: the snapshot at unlock, who may claim, and payouts.
+//! Checkpoint 9: each heir's soulbound, dynamic NEP-171 credential (`nft.rs`).
 //! Claims build on this in later checkpoints.
 
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
@@ -15,7 +17,11 @@ use near_sdk::{
     assert_one_yocto, env, ext_contract, is_promise_success, near, require,
 };
 
+mod nft;
+
 pub const ACTION_CHECKIN: u8 = 0;
+/// A claim: the heir's own Selfie Check, naming their label.
+pub const ACTION_CLAIM: u8 = 1;
 /// A withdrawal: the grantor's own Selfie Check, so a stolen key alone can't move funds.
 pub const ACTION_WITHDRAW: u8 = 2;
 const DOMAIN: &str = "herit-near:v1";
@@ -46,6 +52,9 @@ pub const MAX_OVERRIDE_TOKENS: u32 = 10;
 /// implementation. Any excess is refunded by the token to the estate.
 const TOKEN_REGISTRATION: NearToken = NearToken::from_micronear(1_250);
 const TOKEN_CALL_GAS: Gas = Gas::from_tgas(10);
+/// A payout callback only updates a record and logs. Kept small so a whole claim fits in what the
+/// heir's 0.1 NEAR seed can prepay.
+const PAYOUT_CALLBACK_GAS: Gas = Gas::from_tgas(5);
 
 /// An asset the vault holds: `None` is native NEAR (`NATIVE` in `HeritVault`), `Some(token)` a
 /// NEP-141 token contract.
@@ -124,6 +133,9 @@ enum Key {
     Tokens,
     Shares,
     OverrideAssets,
+    Snapshots,
+    ClaimCommitments,
+    Paid,
 }
 
 /// The NEP-141 and NEP-145 calls the estate makes on a token contract.
@@ -166,6 +178,18 @@ pub struct Estate {
     /// Every asset with at least one override (`s_overriddenTokens`), so `add_heir` can check a new
     /// heir's default against each asset's own total. At most `MAX_OVERRIDE_TOKENS`.
     override_assets: Vector<Asset>,
+    /// What each balance was at unlock (`s_snapshots` in `HeritVault`). Every share is a percentage
+    /// of this, so heirs claiming at different times split the same total. An entry is created,
+    /// at 0, when its asset is listed, so taking the snapshot writes no new storage.
+    snapshots: LookupMap<Asset, u128>,
+    /// `s_snapshotTaken`: the balances are frozen. Set once, at unlock.
+    snapshot_taken: bool,
+    /// commitment -> the label it claimed for (`s_claimUsed` in `LivenessAttestor`). One human,
+    /// one heir slot; the same human may claim again for the same label, to retry a failed payout.
+    claim_commitments: LookupMap<[u8; 32], String>,
+    /// (label, asset) pairs already paid (`s_paid` in `ClaimManager`). A pair is unmarked again if
+    /// its transfer fails, so the heir can retry.
+    paid: LookupSet<(String, Asset)>,
 }
 
 #[near]
@@ -195,6 +219,10 @@ impl Estate {
             tokens: Vector::new(Key::Tokens),
             shares: LookupMap::new(Key::Shares),
             override_assets: Vector::new(Key::OverrideAssets),
+            snapshots: LookupMap::new(Key::Snapshots),
+            snapshot_taken: false,
+            claim_commitments: LookupMap::new(Key::ClaimCommitments),
+            paid: LookupSet::new(Key::Paid),
         }
     }
 
@@ -232,8 +260,14 @@ impl Estate {
         let now = env::block_timestamp();
         match s {
             Status::Grace => log_event("entered_grace", &format!(r#"{{"at":"{now}"}}"#)),
-            // Checkpoint 8 snapshots the balances here.
-            Status::Unlocked => log_event("unlocked", &format!(r#"{{"at":"{now}"}}"#)),
+            // `_unlock`: freeze the balances before any heir can claim.
+            Status::Unlocked => {
+                self.snapshot();
+                log_event(
+                    "unlocked",
+                    &format!(r#"{{"at":"{now}","heirs":{}}}"#, self.heirs.len()),
+                );
+            }
             Status::Active => {}
         }
         self.status = s;
@@ -403,7 +437,158 @@ impl Estate {
             true
         } else {
             self.credit(&asset, amount.0);
+            // Sent before unlock, failed after it: the amount is back in the estate, so it joins
+            // the snapshot and the heirs still to claim share it rather than it being stranded.
+            if self.snapshot_taken {
+                *self.snapshots.get_mut(&asset).expect("asset not listed") += amount.0;
+            }
             log_event("withdraw_failed", &data);
+            false
+        }
+    }
+
+    // ---------- claims ----------
+
+    /// An heir claims their share (`LivenessAttestor.claim` + `ClaimManager.claim`). Sent from the
+    /// heir's own account, `<label>.<estate>`, with their own `ACTION_CLAIM` Selfie Check naming
+    /// `label`. Pokes the estate first, so the first claim after the deadline unlocks it and takes
+    /// the snapshot.
+    ///
+    /// Then pays every asset this heir hasn't been paid yet: their share of the snapshot, rounded
+    /// down (`ClaimManager.claim` + `HeritVault.payOut`). An asset with a 0% share is skipped; one
+    /// whose share rounds to nothing is marked paid. Refused with "nothing to claim" if no transfer
+    /// results. Each transfer has its own callback, which credits the amount back and unmarks the
+    /// asset if the transfer failed, so the heir can claim again.
+    ///
+    /// `#[payable]`: the heir pays for the records this writes (their commitment the first time,
+    /// one paid mark per asset) and, per token, their registration with the token (0.00125 NEAR)
+    /// and the 1 yoctoNEAR `ft_transfer` needs, out of their account's seed, never out of the
+    /// estate. The surplus is refunded. Returns how many
+    /// transfers were sent.
+    #[payable]
+    pub fn claim(
+        &mut self,
+        label: String,
+        attestation: Attestation,
+        signature: Base64VecU8,
+    ) -> u32 {
+        require!(
+            self.poke_expiry() == Status::Unlocked,
+            "estate not unlocked"
+        );
+        let heir = self.heirs.get(&label).expect("no such heir");
+        require!(
+            env::predecessor_account_id() == heir.account_id,
+            "not entitled: claim from the heir's own account"
+        );
+        require!(
+            attestation.heir_label.as_deref() == Some(label.as_str()),
+            "attestation is for another label"
+        );
+        let face = self.verify(&attestation, &signature, ACTION_CLAIM);
+        require!(
+            Some(face) != self.grantor_commitment,
+            "wrong human: the grantor cannot claim"
+        );
+
+        let before = env::storage_usage();
+        match self.claim_commitments.get(&face) {
+            Some(claimed) => require!(
+                claimed == &label,
+                "commitment used: one human, one heir slot"
+            ),
+            None => {
+                self.claim_commitments.insert(face, label.clone());
+                self.claim_commitments.flush(); // so storage_usage() sees the write
+            }
+        }
+        log_event(
+            "claim_attested",
+            &format!(r#"{{"label":"{label}","nonce":"{}"}}"#, attestation.nonce.0),
+        );
+
+        let heir_account = env::predecessor_account_id();
+        let assets: Vec<Asset> = self.tokens.iter().cloned().collect();
+        let (mut sent, mut token_transfers) = (0u32, 0u128);
+        for asset in assets {
+            let key = (label.clone(), asset.clone());
+            if self.paid.contains(&key) {
+                continue;
+            }
+            let bps = self.share(&label, &asset);
+            if bps == 0 {
+                continue; // no share of this asset, so nothing to record
+            }
+            self.paid.insert(key);
+            let amount = self.payout_amount(&asset, bps);
+            if amount == 0 {
+                continue; // the share rounded down to nothing
+            }
+            let available = self.balances.get(&asset).copied().unwrap_or(0);
+            require!(amount <= available, "insufficient balance"); // can't happen: shares <= 100%
+            self.balances.insert(asset.clone(), available - amount);
+            let transfer = match &asset {
+                None => {
+                    Promise::new(heir_account.clone()).transfer(NearToken::from_yoctonear(amount))
+                }
+                Some(token) => {
+                    token_transfers += 1;
+                    // A new heir account isn't registered with the token yet, so register it first.
+                    // `then` runs the transfer whether or not that succeeds, so an heir who was
+                    // already registered is still paid.
+                    ext_ft::ext(token.clone())
+                        .with_attached_deposit(TOKEN_REGISTRATION)
+                        .with_static_gas(TOKEN_CALL_GAS)
+                        .storage_deposit(Some(heir_account.clone()), Some(true))
+                        .then(
+                            ext_ft::ext(token.clone())
+                                .with_attached_deposit(NearToken::from_yoctonear(1))
+                                .with_static_gas(TOKEN_CALL_GAS)
+                                .ft_transfer(
+                                    heir_account.clone(),
+                                    U128(amount),
+                                    Some("herit claim".into()),
+                                ),
+                        )
+                }
+            };
+            transfer
+                .then(
+                    Self::ext(env::current_account_id())
+                        .with_static_gas(PAYOUT_CALLBACK_GAS)
+                        .on_paid(label.clone(), asset, U128(amount)),
+                )
+                .detach();
+            sent += 1;
+        }
+        require!(sent > 0, "nothing to claim");
+        // `paid` is a LookupSet, which writes at once, so storage_usage() already counts its marks.
+        // Per token payout: the heir's registration with the token, and 1 yocto for `ft_transfer`.
+        let per_token = TOKEN_REGISTRATION.as_yoctonear() + 1;
+        charge_storage(before, token_transfers * per_token);
+        log_event(
+            "claim_settled",
+            &format!(r#"{{"label":"{label}","transfers":{sent}}}"#),
+        );
+        sent
+    }
+
+    /// Runs after each payout. Logs `claimed`, or credits the amount back, unmarks the asset so
+    /// the heir can claim it again, and logs `claim_failed`.
+    #[private]
+    pub fn on_paid(&mut self, label: String, asset: Asset, amount: U128) -> bool {
+        let asset_name = asset.clone().map_or("near".to_string(), |t| t.to_string());
+        let data = format!(
+            r#"{{"label":"{label}","asset":"{asset_name}","amount":"{}"}}"#,
+            amount.0
+        );
+        if is_promise_success() {
+            log_event("claimed", &data);
+            true
+        } else {
+            self.credit(&asset, amount.0);
+            self.paid.remove(&(label, asset));
+            log_event("claim_failed", &data);
             false
         }
     }
@@ -478,6 +663,7 @@ impl Estate {
             let heir = self.heirs.get_mut(&label).expect("no such heir");
             heir.created = true;
             let account = heir.account_id.clone();
+            nft::emit_mint(&account, &label); // the credential exists from now on
             log_event(
                 "heir_added",
                 &format!(r#"{{"label":"{label}","account":"{account}"}}"#),
@@ -501,8 +687,10 @@ impl Estate {
         self.not_unlocked();
         let heir = self.heirs.get(&label).expect("no such heir");
         require!(heir.created, "heir account still being created");
+        let account = heir.account_id.clone();
         self.heirs.remove(&label);
         self.clear_shares(&label);
+        nft::emit_burn(&account, &label);
         log_event("heir_removed", &format!(r#"{{"label":"{label}"}}"#));
     }
 
@@ -560,6 +748,42 @@ impl Estate {
     /// that also pays for storage.
     pub fn balance_of(&self, asset: Asset) -> U128 {
         U128(self.balances.get(&asset).copied().unwrap_or(0))
+    }
+
+    /// The label a face commitment (base64) has claimed for, if any (`claimCommitmentUsed`).
+    pub fn claim_commitment_used(&self, commitment: Base64VecU8) -> Option<String> {
+        let c: [u8; 32] = commitment.0.as_slice().try_into().ok()?;
+        self.claim_commitments.get(&c).cloned()
+    }
+
+    /// What `label` would receive of `asset` if they claimed now (`claimableOf`): their share of
+    /// the snapshot, rounded down, or 0 if already paid. Once the clock says Unlocked it already
+    /// shows the figure the snapshot will give, poke or no poke.
+    pub fn claimable_of(&self, label: String, asset: Asset) -> U128 {
+        U128(self.claimable(&label, &asset))
+    }
+
+    /// Every asset with what `label` would receive of it (`claimableAll`).
+    pub fn claimable_all(&self, label: String) -> Vec<(Asset, U128)> {
+        self.tokens
+            .iter()
+            .map(|a| (a.clone(), U128(self.claimable(&label, a))))
+            .collect()
+    }
+
+    /// Whether `label` has been paid `asset` (`hasClaimed`). False again if the transfer failed.
+    pub fn has_claimed(&self, label: String, asset: Asset) -> bool {
+        self.paid.contains(&(label, asset))
+    }
+
+    /// What the estate held of `asset` at unlock. 0 before then.
+    pub fn snapshot_of(&self, asset: Asset) -> U128 {
+        U128(self.snapshots.get(&asset).copied().unwrap_or(0))
+    }
+
+    /// Whether the balances have been frozen.
+    pub fn snapshot_taken(&self) -> bool {
+        self.snapshot_taken
     }
 
     /// Every asset the estate has held, in the order first deposited. `null` is NEAR.
@@ -643,9 +867,52 @@ impl Estate {
         let before = env::storage_usage();
         self.tokens.push(asset.clone());
         self.balances.insert(asset.clone(), 0);
+        self.snapshots.insert(asset.clone(), 0);
         self.tokens.flush();
-        self.balances.flush(); // so storage_usage() sees both writes
+        self.balances.flush();
+        self.snapshots.flush(); // so storage_usage() sees all three writes
         (env::storage_usage() - before) as u128 * env::storage_byte_cost().as_yoctonear()
+    }
+
+    /// `_claimable`.
+    fn claimable(&self, label: &str, asset: &Asset) -> u128 {
+        if !self.heirs.contains_key(label)
+            || self.paid.contains(&(label.to_string(), asset.clone()))
+        {
+            return 0;
+        }
+        self.payout_amount(asset, self.share(label, asset))
+    }
+
+    /// `snapshot × bps / 10,000`, rounded down: dust beats paying out more than was there. Before
+    /// the snapshot is taken it reads the balance, which is what the snapshot will be once the
+    /// clock says Unlocked, and 0 before that.
+    fn payout_amount(&self, asset: &Asset, bps: u16) -> u128 {
+        let ruler = if self.snapshot_taken {
+            self.snapshots.get(asset).copied().unwrap_or(0)
+        } else if self.pending_status() == Status::Unlocked {
+            self.balances.get(asset).copied().unwrap_or(0)
+        } else {
+            0
+        };
+        ruler * bps as u128 / BPS as u128
+    }
+
+    /// Freezes every listed balance (`snapshot` in `HeritVault`). A no-op the second time, as
+    /// there: re-running it after a payout would shrink the ruler.
+    fn snapshot(&mut self) {
+        if self.snapshot_taken {
+            return;
+        }
+        self.snapshot_taken = true;
+        for asset in self.tokens.iter() {
+            let balance = self.balances.get(asset).copied().unwrap_or(0);
+            self.snapshots.insert(asset.clone(), balance);
+        }
+        log_event(
+            "snapshotted",
+            &format!(r#"{{"assets":{}}}"#, self.tokens.len()),
+        );
     }
 
     fn is_listed(&self, asset: &Asset) -> bool {
@@ -663,6 +930,7 @@ impl Estate {
         self.tokens.clear();
         self.tokens.extend(kept);
         self.balances.remove(asset);
+        self.snapshots.remove(asset);
     }
 
     fn credit(&mut self, asset: &Asset, amount: u128) {
@@ -857,6 +1125,12 @@ mod heir_invariant;
 
 #[cfg(test)]
 mod vault_tests;
+
+#[cfg(test)]
+mod claim_tests;
+
+#[cfg(test)]
+mod nft_tests;
 
 /// Checkpoint 4: check-in and attestations.
 #[cfg(test)]

@@ -8,14 +8,6 @@ use proptest::prelude::*;
 use super::testing::*;
 use super::*;
 
-const ONE_NEAR: NearToken = NearToken::from_near(1);
-const NEAR: Asset = None;
-
-fn deposit_at(e: &mut Estate, caller: AccountId, amount: u128, now: u64) {
-    set_context_paying(caller, now, NearToken::from_yoctonear(amount));
-    e.deposit();
-}
-
 /// What listing NEAR costs on the first deposit, measured on a fresh estate.
 fn listing_cost() -> u128 {
     let mut e = new_estate();
@@ -144,42 +136,6 @@ proptest! {
 
 use near_sdk::mock::MockAction;
 use near_sdk::test_utils::get_created_receipts;
-
-fn token(n: u32) -> AccountId {
-    format!("token{n}.testnet").parse().unwrap()
-}
-
-fn usdc() -> AccountId {
-    token(0)
-}
-
-/// The grantor adds `t`, paying enough.
-fn add_token_at(e: &mut Estate, t: AccountId, now: u64) {
-    set_context_paying(grantor(), now, NearToken::from_millinear(100));
-    let _ = e.add_token(t);
-}
-
-/// Adds `t` and runs the registration callback as a success.
-fn add_registered_token(e: &mut Estate, t: AccountId) {
-    add_token_at(e, t.clone(), 0);
-    set_callback_context(true);
-    assert!(e.on_token_registered(t, U128(0)));
-}
-
-/// `token` delivers `amount` from `sender`, as `ft_transfer_call` does.
-fn ft_deposit_at(
-    e: &mut Estate,
-    token: AccountId,
-    sender: AccountId,
-    amount: u128,
-    now: u64,
-) -> U128 {
-    set_context(token, now);
-    match e.ft_on_transfer(sender, U128(amount), String::new()) {
-        PromiseOrValue::Value(unused) => unused,
-        PromiseOrValue::Promise(_) => panic!("ft_on_transfer must answer at once"),
-    }
-}
 
 #[test]
 fn add_token_lists_it_and_registers_the_estate() {
@@ -620,22 +576,6 @@ proptest! {
 }
 
 // ---------- Part 4: withdrawals with a fresh Selfie Check ----------
-
-const ONE_YOCTO: NearToken = NearToken::from_yoctonear(1);
-
-/// A valid withdrawal attestation for the grantor's face, made at `now`.
-fn withdraw_att(nonce: u64, now: u64) -> Att {
-    let mut att = Att::check_in(nonce, now);
-    att.action = ACTION_WITHDRAW;
-    att
-}
-
-/// The grantor withdraws with `att`, attaching 1 yoctoNEAR.
-fn withdraw_with(e: &mut Estate, asset: Asset, amount: u128, att: &Att, now: u64) {
-    set_context_paying(att.subject.clone(), now, ONE_YOCTO);
-    let (attestation, signature) = att.sign();
-    let _ = e.withdraw(asset, U128(amount), attestation, signature);
-}
 
 /// Checked in (face bound, nonce 1) with 3 NEAR and 5 mUSDC deposited.
 fn funded_estate() -> Estate {

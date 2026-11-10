@@ -26,6 +26,18 @@ name = "estate_vault"
 path = "estate_vault.rs"
 
 [[test]]
+name = "estate_claims"
+path = "estate_claims.rs"
+
+[[test]]
+name = "estate_lifecycle"
+path = "estate_lifecycle.rs"
+
+[[test]]
+name = "estate_nft"
+path = "estate_nft.rs"
+
+[[test]]
 name = "fork_smoke"
 path = "fork_smoke.rs"
 

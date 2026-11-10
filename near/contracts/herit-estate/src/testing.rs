@@ -5,7 +5,13 @@ use near_sdk::json_types::{Base64VecU8, U64};
 use near_sdk::test_utils::VMContextBuilder;
 use near_sdk::{AccountId, testing_env};
 
-use super::{ACTION_CHECKIN, Attestation, DOMAIN, Estate, NS_PER_SEC, SignedPayload};
+use super::{
+    ACTION_CHECKIN, ACTION_CLAIM, ACTION_WITHDRAW, Asset, Attestation, DOMAIN, Estate, NS_PER_SEC,
+    SignedPayload, Status,
+};
+use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
+use near_sdk::json_types::U128;
+use near_sdk::{NearToken, PromiseOrValue};
 
 pub const INTERVAL_SEC: u32 = 30 * 86_400;
 pub const GRACE_SEC: u32 = 7 * 86_400;
@@ -243,4 +249,112 @@ pub fn add_created_heir(estate: &mut Estate, label: &str, bps: u16) {
     add_heir_at(estate, label, bps, 0);
     set_callback_context(true);
     assert!(estate.on_heir_created(label.into(), near_sdk::json_types::U128(0)));
+}
+
+// ---------- vault (Checkpoint 7) ----------
+
+pub const ONE_NEAR: near_sdk::NearToken = near_sdk::NearToken::from_near(1);
+pub const ONE_YOCTO: near_sdk::NearToken = near_sdk::NearToken::from_yoctonear(1);
+pub const NEAR: super::Asset = None;
+
+pub fn deposit_at(e: &mut Estate, caller: AccountId, amount: u128, now: u64) {
+    set_context_paying(caller, now, NearToken::from_yoctonear(amount));
+    e.deposit();
+}
+
+pub fn token(n: u32) -> AccountId {
+    format!("token{n}.testnet").parse().unwrap()
+}
+
+pub fn usdc() -> AccountId {
+    token(0)
+}
+
+/// The grantor adds `t`, paying enough.
+pub fn add_token_at(e: &mut Estate, t: AccountId, now: u64) {
+    set_context_paying(grantor(), now, NearToken::from_millinear(100));
+    let _ = e.add_token(t);
+}
+
+/// Adds `t` and runs the registration callback as a success.
+pub fn add_registered_token(e: &mut Estate, t: AccountId) {
+    add_token_at(e, t.clone(), 0);
+    set_callback_context(true);
+    assert!(e.on_token_registered(t, U128(0)));
+}
+
+/// `token` delivers `amount` from `sender`, as `ft_transfer_call` does.
+pub fn ft_deposit_at(
+    e: &mut Estate,
+    token: AccountId,
+    sender: AccountId,
+    amount: u128,
+    now: u64,
+) -> U128 {
+    set_context(token, now);
+    match e.ft_on_transfer(sender, U128(amount), String::new()) {
+        PromiseOrValue::Value(unused) => unused,
+        PromiseOrValue::Promise(_) => panic!("ft_on_transfer must answer at once"),
+    }
+}
+
+/// A valid withdrawal attestation for the grantor's face, made at `now`.
+pub fn withdraw_att(nonce: u64, now: u64) -> Att {
+    let mut att = Att::check_in(nonce, now);
+    att.action = ACTION_WITHDRAW;
+    att
+}
+
+/// The grantor withdraws with `att`, attaching 1 yoctoNEAR.
+pub fn withdraw_with(e: &mut Estate, asset: Asset, amount: u128, att: &Att, now: u64) {
+    set_context_paying(att.subject.clone(), now, ONE_YOCTO);
+    let (attestation, signature) = att.sign();
+    let _ = e.withdraw(asset, U128(amount), attestation, signature);
+}
+
+// ---------- claims (Checkpoint 8) ----------
+
+/// What a claim deposit covers: the commitment record's storage, with room to spare.
+pub const CLAIM_DEPOSIT: NearToken = NearToken::from_millinear(10);
+pub const SON_FACE: [u8; 32] = [3; 32];
+pub const DAUGHTER_FACE: [u8; 32] = [4; 32];
+
+/// Checked in, two heirs, 3 NEAR and 5 mUSDC deposited. Returns it with its unlock time.
+pub fn funded_estate() -> (Estate, u64) {
+    let mut e = new_estate();
+    add_created_heir(&mut e, "son", 6_000);
+    add_created_heir(&mut e, "daughter", 4_000);
+    check_in_at(&mut e, CHECKED_IN_AT, 1);
+    deposit_at(
+        &mut e,
+        grantor(),
+        3 * ONE_NEAR.as_yoctonear(),
+        CHECKED_IN_AT,
+    );
+    add_registered_token(&mut e, usdc());
+    ft_deposit_at(&mut e, usdc(), grantor(), 5_000_000, CHECKED_IN_AT);
+    let (_, unlock_at) = e.deadlines_of();
+    (e, unlock_at.0)
+}
+
+pub fn poke_at(e: &mut Estate, now: u64) -> Status {
+    set_context(stranger(), now);
+    e.poke_expiry()
+}
+
+/// A valid claim for `label`, by `<label>.<estate>`, with `face`, made at `now`.
+pub fn claim_att(label: &str, face: [u8; 32], nonce: u64, now: u64) -> Att {
+    let mut att = Att::check_in(nonce, now);
+    att.subject = heir_id(label);
+    att.action = ACTION_CLAIM;
+    att.heir_label = Some(label.into());
+    att.commitment = face;
+    att
+}
+
+/// `att.subject` claims `label` at `now`, attaching `deposit`.
+pub fn claim_with(e: &mut Estate, label: &str, att: &Att, now: u64, deposit: NearToken) {
+    set_context_paying(att.subject.clone(), now, deposit);
+    let (attestation, signature) = att.sign();
+    e.claim(label.into(), attestation, signature);
 }
