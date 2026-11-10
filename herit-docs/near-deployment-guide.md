@@ -1149,6 +1149,8 @@ fn verify_with_world(action: &str, result: &Value) -> Result<String, String> {
         }
     }
     // Read the Selfie Check credential specifically. `face` is its legacy alias.
+    // Checkpoint 5 tightens this: the proof must hold exactly one response and it must be the
+    // Selfie Check, because World's v4 reply doesn't list nullifiers per credential.
     result["responses"].as_array()
         .and_then(|items| items.iter().find(|i| matches!(i["identifier"].as_str(), Some("selfie" | "face"))))
         .and_then(|i| i["nullifier"].as_str())
