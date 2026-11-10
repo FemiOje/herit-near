@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = ["contracts/herit-estate", "contracts/herit-factory", "contracts/mock-ft", "tests"]
+exclude = ["attestor-worker"]   # different target (wasm32-wasip2)
+
+[workspace.dependencies]
+near-sdk = "5.30.1"
+near-contract-standards = "5.30.1"
+
+[profile.release]
+codegen-units = 1
+opt-level = "z"        # size matters: Global Contract cost is per byte
+lto = true
+debug = false
+panic = "abort"
+overflow-checks = true # never ship without this

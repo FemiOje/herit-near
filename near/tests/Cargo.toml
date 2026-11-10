@@ -1,0 +1,20 @@
+[package]
+name = "herit-tests"
+version = "0.0.0"
+edition = "2024"
+publish = false
+autotests = false
+
+[[test]]
+name = "sandbox_smoke"
+path = "sandbox_smoke.rs"
+
+[[test]]
+name = "fork_smoke"
+path = "fork_smoke.rs"
+
+[dev-dependencies]
+near-workspaces = "0.24.0"
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+serde_json = "1"
