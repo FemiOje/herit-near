@@ -835,7 +835,7 @@ impl Estate {
             .0
             .as_slice()
             .try_into()
-            .expect("commitment != 32 bytes");
+            .unwrap_or_else(|_| env::panic_str("commitment != 32 bytes"));
         require!(commitment != [0u8; 32], "zero commitment");
         let msg = near_sdk::borsh::to_vec(&SignedPayload {
             domain: DOMAIN.into(),
@@ -847,8 +847,12 @@ impl Estate {
             nonce: a.nonce.0,
             expiry_ns: a.expiry_ns.0,
         })
-        .unwrap();
-        let sig: [u8; 64] = sig.0.as_slice().try_into().expect("signature != 64 bytes");
+        .unwrap_or_else(|_| env::abort());
+        let sig: [u8; 64] = sig
+            .0
+            .as_slice()
+            .try_into()
+            .unwrap_or_else(|_| env::panic_str("signature != 64 bytes"));
         require!(
             env::ed25519_verify(&sig, &msg, &self.attestor_pk),
             "invalid signature"
@@ -1093,9 +1097,9 @@ fn decode_ed25519(s: &str) -> [u8; 32] {
         .expect("expected ed25519:<base58>");
     near_sdk::bs58::decode(b58)
         .into_vec()
-        .expect("bad base58")
+        .unwrap_or_else(|_| env::panic_str("bad base58"))
         .try_into()
-        .expect("ed25519 key must be 32 bytes")
+        .unwrap_or_else(|_| env::panic_str("ed25519 key must be 32 bytes"))
 }
 
 /// NEP-297 event, readable by indexers and the activity feed.
