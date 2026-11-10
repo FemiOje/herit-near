@@ -1,0 +1,13 @@
+[package]
+name = "test-global-publisher"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+description = "Test-only: publishes a wasm as a Global Contract in the sandbox, which near-workspaces can't do itself."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+near-sdk = { workspace = true }

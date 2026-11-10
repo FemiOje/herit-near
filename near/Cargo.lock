@@ -1157,6 +1157,7 @@ dependencies = [
  "ed25519-dalek",
  "near-workspaces",
  "serde_json",
+ "sha2 0.10.9",
  "tokio",
 ]
 
@@ -3717,6 +3718,13 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "test-global-publisher"
+version = "0.1.0"
+dependencies = [
+ "near-sdk",
 ]
 
 [[package]]

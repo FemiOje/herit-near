@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["contracts/herit-estate", "contracts/herit-factory", "contracts/mock-ft", "tests"]
+members = ["contracts/herit-estate", "contracts/herit-factory", "contracts/mock-ft", "contracts/test-global-publisher", "tests"]
 exclude = ["attestor-worker"]   # different target (wasm32-wasip2)
 
 [workspace.dependencies]

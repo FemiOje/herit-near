@@ -12,11 +12,20 @@ fn wasm(name: &str) -> anyhow::Result<Vec<u8>> {
 async fn placeholders_deploy_and_answer() -> anyhow::Result<()> {
     let worker = near_workspaces::sandbox().await?;
 
+    // Both contracts panic on every call until `new` has run.
     let factory = worker.dev_deploy(&wasm("herit_factory")?).await?;
+    factory
+        .call("new")
+        .args_json(json!({
+            "estate_code_hash": "11111111111111111111111111111111",
+            "attestor_pk": "ed25519:11111111111111111111111111111111",
+        }))
+        .transact()
+        .await?
+        .into_result()?;
     let version: String = factory.view("version").await?.json()?;
     assert_eq!(version, "0.1.0", "herit_factory");
 
-    // The estate panics on every call until `new` has run.
     let estate = worker.dev_deploy(&wasm("herit_estate")?).await?;
     estate
         .call("new")

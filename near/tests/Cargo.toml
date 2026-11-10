@@ -38,6 +38,10 @@ name = "estate_nft"
 path = "estate_nft.rs"
 
 [[test]]
+name = "estate_factory"
+path = "estate_factory.rs"
+
+[[test]]
 name = "fork_smoke"
 path = "fork_smoke.rs"
 
@@ -50,3 +54,4 @@ borsh = { version = "1", features = ["derive"] }
 bs58 = "0.5"
 ed25519-dalek = "2"
 base64 = "0.22"
+sha2 = "0.10"
