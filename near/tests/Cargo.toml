@@ -14,6 +14,10 @@ name = "estate_state_machine"
 path = "estate_state_machine.rs"
 
 [[test]]
+name = "estate_check_in"
+path = "estate_check_in.rs"
+
+[[test]]
 name = "fork_smoke"
 path = "fork_smoke.rs"
 
@@ -22,3 +26,7 @@ near-workspaces = "0.24.0"
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"
 serde_json = "1"
+borsh = { version = "1", features = ["derive"] }
+bs58 = "0.5"
+ed25519-dalek = "2"
+base64 = "0.22"
