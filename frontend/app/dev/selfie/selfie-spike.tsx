@@ -10,16 +10,13 @@ import {
   type SignResponse,
 } from "@/lib/selfie-check";
 
-const ACTION_CHECKIN = 0;
-const ACTION_CLAIM = 1;
-
-/** The form, the World ID widget, and the worker input it produces. */
+/** The form, the World ID widget, and the transaction the attestation goes into. */
 export function SelfieSpike() {
   const [estateLabel, setEstateLabel] = useState("spike");
   const [subject, setSubject] = useState("alice-kaykay.testnet");
   const [heirLabel, setHeirLabel] = useState("");
   const [config, setConfig] = useState<SignResponse | null>(null);
-  const [workerInput, setWorkerInput] = useState<string | null>(null);
+  const [command, setCommand] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -30,7 +27,7 @@ export function SelfieSpike() {
   async function start() {
     setBusy(true);
     setError(null);
-    setWorkerInput(null);
+    setCommand(null);
     try {
       const res = await fetch("/api/worldid/sign", {
         method: "POST",
@@ -47,17 +44,29 @@ export function SelfieSpike() {
     }
   }
 
-  function done(result: IDKitResult) {
-    const input = {
-      operation: "attest",
-      estate_id: estateAccountId(estateLabel),
-      subject,
-      action: purpose.kind === "claim" ? ACTION_CLAIM : ACTION_CHECKIN,
-      heir_label: purpose.kind === "claim" ? purpose.heirLabel : null,
-      result,
-    };
-    setWorkerInput(JSON.stringify({ input }, null, 2));
+  async function done(result: IDKitResult) {
     setConfig(null);
+    setBusy(true);
+    try {
+      const res = await fetch("/api/attest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ purpose, subject, result }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? `attest route returned ${res.status}`);
+      const method = purpose.kind === "claim" ? "claim" : "check_in";
+      // Single quotes around the JSON: none of its values can contain one.
+      setCommand(
+        `near contract call-function as-transaction ${estateAccountId(estateLabel)} ${method} ` +
+          `json-args '${JSON.stringify(body)}' prepaid-gas '100 Tgas' attached-deposit '0 NEAR' ` +
+          `sign-as ${subject} network-config testnet sign-with-keychain send`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -106,19 +115,19 @@ export function SelfieSpike() {
         />
       ) : null}
 
-      {workerInput ? (
+      {command ? (
         <div className="flex flex-col gap-2">
           <p className="text-sm">
-            Worker input. Copy it into <code>near/scripts/spike-input.json</code> (gitignored).
+            Attestation signed. Run this within 15 minutes to send it to the estate.
           </p>
           <button
             className="self-start rounded border px-3 py-1 text-sm"
-            onClick={() => navigator.clipboard.writeText(workerInput)}
+            onClick={() => navigator.clipboard.writeText(command)}
           >
             Copy
           </button>
-          <pre className="max-h-96 overflow-auto rounded bg-zinc-100 p-3 text-xs dark:bg-zinc-900">
-            {workerInput}
+          <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all rounded bg-zinc-100 p-3 text-xs dark:bg-zinc-900">
+            {command}
           </pre>
         </div>
       ) : null}
