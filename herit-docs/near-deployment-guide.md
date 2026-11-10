@@ -125,7 +125,11 @@ name is its address. `getMessageHash` moves off-chain into the attestor, and `is
 3. NEP-141 stablecoin inheritance with async-safe payouts.
 4. World ID Selfie Check attestor rebuilt as an OutLayer TEE worker, so no server holds the signing key.
 5. *(Stretch, strongly recommended: a small change with a large story)* **Liveness-gated withdrawals.** On Sepolia, a thief holding the grantor's key could still call `withdraw`. On NEAR, `withdraw` also requires a fresh check-in attestation, so a stolen key alone can move nothing. The original README's threat model ("the thief who stole her key") then holds end to end.
-6. *(Stretch, only if days 1–4 land early)* Cross-chain inheritance through **NEAR Intents** or **HOT**, rather than hand-rolling Chain Signatures. Leave it out of scope unless time allows. Check testnet support first; it hasn't been verified.
+6. *(Stretch checkpoint, agreed 2026-11-10; starts only once the core estate works on testnet)* **BTC, ETH and SOL inheritance through NEAR Intents.** The grantor deposits BTC, ETH or SOL into `intents.near`, credited to the estate account. The estate holds these as NEP-245 multi-token balances. On unlock, each heir's claim moves their share to them inside Intents, in the same split as NEAR and NEP-141, and the heir withdraws the real coin to any address on its native chain.
+   - **Coins must be deposited into the estate first.** Herit can't reach coins that stay in the grantor's own Bitcoin, Ethereum or Solana wallet.
+   - **Intents is mainnet only** (brief Q-007), so this part of the demo runs on mainnet with tiny real amounts. Everything else stays on testnet.
+   - **Not Chain Signatures.** Building and relaying raw Bitcoin, EVM and Solana transactions is too much for the window.
+   - **Verify before writing its checkpoint guide:** a contract can hold an Intents balance and transfer it by calling `intents.near` directly, without a signed intent.
 
 ### 2.4 Partner tech
 
@@ -137,7 +141,7 @@ mandatory (Q-011), so a partner only goes in if it does a job Herit actually has
 | --- | --- | --- |
 | Wallet connection | **HOT** (`@hot-labs/near-connect`) | **Use** (§9) |
 | Attestor signing and verification | **OutLayer** | **Use** (§7), with a local-signer fallback |
-| Cross-chain inheritance | **NEAR Intents**, **HOT** | Use if the §2.3 stretch goal gets built |
+| Cross-chain inheritance (BTC, ETH, SOL) | **NEAR Intents** | **Use** in the §2.3 stretch checkpoint (mainnet only) |
 | Guardian committee, multisig admin | **Trezu**, **SputnikDAO** | After the hackathon (`ARCHITECTURE.md` §10) |
 | Treasury | **NEAR Business** | No: the vault has to be gated by contract rules, not by signers' approval |
 | Running Herit on EVM | **Aurora** | No: an EVM redeploy isn't judged (§2.1) |
@@ -1546,7 +1550,9 @@ Add a second CI job to `.github/workflows/test.yml`: `rustup target add wasm32-u
 | **Fri 13** | README "Built at NEAR HACKATHON", 2-min video, tag `hackathon-submission` | A fresh clone reproduces the demo from the README alone |
 | **Sat 14** | X post, form submission **by 12:00 UTC** | Confirmation received. Leave 12 h of buffer before 23:59 UTC. |
 
-Cut order if you fall behind: cross-chain (already out) → activity feed → NEP-141 (NEAR-only demo) → liveness-gated
+The BTC, ETH and SOL checkpoint (§2.3 item 6) fits only after Thursday's "done when" is met.
+
+Cut order if you fall behind: BTC, ETH and SOL through Intents → activity feed → NEP-141 (NEAR-only demo) → liveness-gated
 withdraw. If OutLayer slips, fall back (§7.5) rather than cutting anything. Never cut the NFT credential: it **is** the
 track.
 

@@ -58,3 +58,4 @@ Checked in the repo on 2026-11-09:
 | Demo token | Our own NEP-141 mock (`mock-usdc-<suffix>.testnet`), not Circle USDC |
 | Non-native tech | Not used, with one exception: World ID Selfie Check, called from the OutLayer worker, because no confirmed NEAR-native option proves recurring liveness |
 | Tracks | `nfts`, `realworld`, `open` |
+| BTC, ETH, SOL | A stretch checkpoint, taken only once the core estate works on testnet. The estate holds them as NEAR Intents balances and pays them out in the heirs' split (guide §2.3 item 6). Mainnet only, with tiny amounts. Not Chain Signatures. First to cut |
