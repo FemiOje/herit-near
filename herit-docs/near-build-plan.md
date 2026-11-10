@@ -35,6 +35,7 @@ Deadline: **2026-11-14 23:59 UTC**. Aim to submit by 12:00 UTC.
 - [x] 7: [The vault](checkpoints/07-vault.md) (built together in parts: Claude wrote, you reviewed)
 - [x] 8: [Claims](checkpoints/08-claims.md) (built together in parts: Claude wrote, you reviewed)
 - [x] 9: [The heir credential](checkpoints/09-heir-credential.md) (built together in parts: Claude wrote, you reviewed; you pinned the images)
+- [x] 10: [The factory and the testnet deploy](checkpoints/10-factory-testnet.md) (built together in parts; you signed off the publish): live on testnet, smoke run linked
 
 ---
 

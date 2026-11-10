@@ -2,7 +2,7 @@
 
 Part of the [build plan](../near-build-plan.md). Starter code: [the deployment guide](../near-deployment-guide.md) §4 (accounts and the Global Contract budget), §6.3 (`herit-factory`), §6.4 (fallback) and §8.3–§8.4 (deploy and smoke run).
 
-**Status:** all four parts done on 2026-11-10: Herit is live on testnet, and a whole estate has run on it; Part 4 waiting for your review
+**Status:** done on 2026-11-10; all four parts reviewed. Herit is live on testnet, and a whole estate has run on it
 **Who:** built together, in parts. Claude writes each part's code and tests and walks you through them; you review, and the next part starts after your OK. You sign the testnet transactions.
 
 ## Goal
@@ -16,7 +16,7 @@ Herit goes live on testnet: `herit-near.testnet` runs the factory, `open_estate`
 | 1 | **Size:** measure the estate wasm and take the cheap savings, with no behaviour change | Done, reviewed |
 | 2 | **The factory contract:** `open_estate`, its rollback, `set_attestor`, views; the grantor pays for the factory's records | Done, reviewed |
 | 3 | **Publish to testnet:** mock USDC, the estate code as a Global Contract, the factory deployed and initialised in one transaction | Done, reviewed |
-| 4 | **Smoke run:** a real estate opened through the factory, through its whole life, with NearBlocks links | Done, waiting for your review |
+| 4 | **Smoke run:** a real estate opened through the factory, through its whole life, with NearBlocks links | Done, reviewed |
 
 ## Part 1: Size
 
