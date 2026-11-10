@@ -1,0 +1,20 @@
+{
+  "_note": "A real World ID verify reply (POST developer.world.org/api/v4/verify/{rp_id}, HTTP 200) for a sandbox Selfie Check, 2026-11-10, Checkpoint 5. The nullifiers are redacted; nothing else is changed. frontend/lib/attest.ts checkVerified and near/attestor-worker check_verified require this shape.",
+  "status": 200,
+  "reply": {
+    "success": true,
+    "action": "herit:spike",
+    "nullifier": "0x<redacted: 32-byte Selfie Check nullifier for herit:spike>",
+    "created_at": "2026-11-10T12:28:30.522148+00:00",
+    "environment": "sandbox",
+    "protocol_version": "3.0",
+    "results": [
+      {
+        "identifier": "selfie",
+        "success": true,
+        "nullifier": "0x<redacted: 32-byte Selfie Check nullifier for herit:spike>"
+      }
+    ],
+    "message": "Proof verified successfully"
+  }
+}

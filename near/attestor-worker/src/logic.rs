@@ -92,9 +92,9 @@ fn is_label(s: &str) -> bool {
 
 /// Returns the Selfie Check nullifier, and refuses any proof that isn't exactly one Selfie Check.
 ///
-/// World's v4 verify reply doesn't list nullifiers per credential, so the nullifier comes from the
-/// proof itself. That is only safe if the proof World verifies *is* the Selfie Check: a proof with
-/// a second credential could otherwise pass on that one.
+/// Checked on the proof before calling World, so a wrong credential costs nothing, and again on
+/// World's reply in `check_verified`. A proof with a second credential could otherwise pass on
+/// that one.
 ///
 /// Only World ID 3.0 proofs are accepted, which is all the `selfieCheckLegacy` preset returns. A
 /// person's v3 and v4 nullifiers differ, so accepting both would give one human two commitments
@@ -136,33 +136,56 @@ pub fn selfie_nullifier(result: &Value) -> Result<String, String> {
         .ok_or_else(|| "Selfie Check response has no nullifier".into())
 }
 
-/// Fails closed: anything not clearly a success is a rejection.
+/// Checks World's verify reply, and fails closed: anything that isn't exactly the success shape is
+/// a rejection.
 ///
-/// The exact success field is undocumented. Tighten this once a real reply has been recorded
-/// (Checkpoint 5 pass criteria).
+/// The shape is the real reply recorded in herit-docs/world-verify-reply.json (Checkpoint 5):
+/// `success`, `action`, `protocol_version`, `nullifier`, and `results` with one entry per
+/// credential. Every field is required, and the reply's nullifier must be the one in the proof, so
+/// the commitment comes from what World verified. Same rules as `frontend/lib/attest.ts`.
 pub fn check_verified(
     status: u16,
     reply: &Value,
     result: &Value,
     action: &str,
+    nullifier: &str,
 ) -> Result<(), String> {
-    let verified = reply["code"].as_str().is_none()
-        && (reply["success"] == json!(true)
-            || reply["responses"].as_array().is_some_and(|r| !r.is_empty()));
-    if !(200..300).contains(&status) || !verified {
+    if !(200..300).contains(&status) || reply["success"] != json!(true) {
         let detail = reply["detail"]
             .as_str()
             .or(reply["code"].as_str())
             .unwrap_or("no detail");
         return Err(format!("proof rejected (status {status}: {detail})"));
     }
-    // The proof must name our action. Nullifiers are per action, so a proof for any other action
-    // would give the same human a fresh commitment and let them take a second heir slot.
-    if result["action"].as_str() != Some(action) {
+    // Nullifiers are per action, so a proof for any other action would give the same human a fresh
+    // commitment and let them take a second heir slot.
+    if result["action"].as_str() != Some(action) || reply["action"].as_str() != Some(action) {
         return Err("proof was not issued for this estate's action".into());
     }
-    if reply["action"].as_str().is_some_and(|a| a != action) {
-        return Err("proof was issued for a different action".into());
+    if reply["protocol_version"].as_str() != Some(PROTOCOL_VERSION) {
+        return Err(format!(
+            "World verified a World ID {} proof",
+            reply["protocol_version"]
+        ));
+    }
+    let results = reply["results"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let [only] = results else {
+        return Err("World did not verify exactly one Selfie Check".into());
+    };
+    if !SELFIE_IDENTIFIERS.contains(&only["identifier"].as_str().unwrap_or(""))
+        || only["success"] != json!(true)
+    {
+        return Err("World did not verify exactly one Selfie Check".into());
+    }
+    let same = |v: &Value| {
+        v.as_str()
+            .is_some_and(|n| n.trim().to_lowercase() == nullifier)
+    };
+    if !same(&reply["nullifier"]) || !same(&only["nullifier"]) {
+        return Err("World verified a different nullifier".into());
     }
     Ok(())
 }
@@ -189,7 +212,7 @@ pub fn attest(input: AttestInput, host: &impl Host) -> Result<Value, String> {
 
     let body = serde_json::to_vec(&input.result).map_err(|e| e.to_string())?;
     let (status, reply) = host.verify_with_world(&body)?;
-    check_verified(status, &reply, &input.result, &action)?;
+    check_verified(status, &reply, &input.result, &action, &nullifier)?;
 
     let salt = host.sign("commitment-salt", SALT_MESSAGE)?;
     let commitment = commitment(&salt, &nullifier);

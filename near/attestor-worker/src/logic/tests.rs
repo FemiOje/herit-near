@@ -27,7 +27,7 @@ impl Fake {
     fn accepting() -> Self {
         Self {
             status: 200,
-            reply: json!({ "success": true }),
+            reply: world_reply("0xabc", "herit:alice"),
             attestor: SigningKey::from_bytes(&[7; 32]),
             salt_key: SigningKey::from_bytes(&[9; 32]),
             world_calls: Cell::new(0),
@@ -58,6 +58,20 @@ impl Host for Fake {
     fn now_ns(&self) -> Result<u64, String> {
         Ok(NOW)
     }
+}
+
+/// The shape of the real sandbox reply in herit-docs/world-verify-reply.json.
+fn world_reply(nullifier: &str, action: &str) -> Value {
+    json!({
+        "success": true,
+        "action": action,
+        "nullifier": nullifier,
+        "created_at": "2026-11-10T12:28:30.522148+00:00",
+        "environment": "sandbox",
+        "protocol_version": "3.0",
+        "results": [{ "identifier": "selfie", "success": true, "nullifier": nullifier }],
+        "message": "Proof verified successfully",
+    })
 }
 
 fn selfie(nullifier: &str) -> Value {
@@ -210,37 +224,79 @@ fn estates_outside_the_factory_are_refused() {
 // ---------- World's verdict ----------
 
 #[test]
-fn world_rejections_are_refused() {
+fn the_real_replys_shape_is_accepted() {
     let proof = result_with(json!([selfie("0x1")]));
+    assert!(check_verified(
+        200,
+        &world_reply("0x1", "herit:alice"),
+        &proof,
+        "herit:alice",
+        "0x1"
+    )
+    .is_ok());
+    // Case and whitespace don't matter: the proof's nullifier is normalised before comparing.
+    let reply = world_reply(" 0xABC ", "herit:alice");
+    assert!(check_verified(200, &reply, &proof, "herit:alice", "0xabc").is_ok());
+}
+
+#[test]
+fn anything_short_of_worlds_success_shape_is_refused() {
+    let proof = result_with(json!([selfie("0x1")]));
+    let ok = world_reply("0x1", "herit:alice");
+    let with = |path: &[&str], value: Value| {
+        let mut r = ok.clone();
+        let mut at = &mut r;
+        for key in &path[..path.len() - 1] {
+            at = if let Ok(i) = key.parse::<usize>() {
+                &mut at[i]
+            } else {
+                &mut at[*key]
+            };
+        }
+        at[path[path.len() - 1]] = value;
+        r
+    };
+    let mut doubled = ok.clone();
+    doubled["results"] = json!([ok["results"][0], ok["results"][0]]);
     let refused = [
         (
             400,
             json!({ "code": "invalid_proof", "detail": "bad proof" }),
         ),
-        (200, json!({ "code": "verification_failed" })),
-        (200, json!({ "success": false })),
+        (500, ok.clone()),
         (200, Value::Null),
-        (500, json!({ "success": true })),
+        (200, with(&["success"], json!(false))),
+        (200, with(&["success"], json!("true"))),
+        (200, with(&["protocol_version"], json!("4.0"))),
+        (200, with(&["results"], json!([]))),
+        (200, doubled),
+        (200, with(&["results", "0", "identifier"], json!("orb"))),
+        (200, with(&["results", "0", "success"], json!(false))),
+        (200, with(&["nullifier"], json!("0x2"))),
+        (200, with(&["nullifier"], Value::Null)),
+        (200, with(&["results", "0", "nullifier"], json!("0x2"))),
     ];
     for (status, reply) in refused {
         assert!(
-            check_verified(status, &reply, &proof, "herit:alice").is_err(),
+            check_verified(status, &reply, &proof, "herit:alice", "0x1").is_err(),
             "{status} {reply}"
         );
     }
-    assert!(check_verified(200, &json!({ "success": true }), &proof, "herit:alice").is_ok());
 }
 
 #[test]
 fn a_proof_for_another_action_is_refused() {
-    let ok = json!({ "success": true });
+    let ok = world_reply("0x1", "herit:alice");
     let other = json!({ "action": "herit:bob", "responses": [selfie("0x1")] });
-    assert!(check_verified(200, &ok, &other, "herit:alice").is_err());
+    assert!(check_verified(200, &ok, &other, "herit:alice", "0x1").is_err());
     let missing = json!({ "responses": [selfie("0x1")] });
-    assert!(check_verified(200, &ok, &missing, "herit:alice").is_err());
-    let reply_other = json!({ "success": true, "action": "herit:bob" });
+    assert!(check_verified(200, &ok, &missing, "herit:alice", "0x1").is_err());
     let proof = result_with(json!([selfie("0x1")]));
-    assert!(check_verified(200, &reply_other, &proof, "herit:alice").is_err());
+    let reply_other = world_reply("0x1", "herit:bob");
+    assert!(check_verified(200, &reply_other, &proof, "herit:alice", "0x1").is_err());
+    let mut no_action = ok.clone();
+    no_action.as_object_mut().unwrap().remove("action");
+    assert!(check_verified(200, &no_action, &proof, "herit:alice", "0x1").is_err());
 }
 
 // ---------- commitment ----------
@@ -294,7 +350,7 @@ fn the_estate_contract_accepts_the_workers_attestation() {
 
 #[test]
 fn a_claim_attestation_carries_the_heir_label() {
-    let host = Fake::accepting();
+    let host = Fake::replying(200, world_reply("0x2", "herit:alice"));
     let mut i = input(
         ACTION_CLAIM,
         Some("son"),
