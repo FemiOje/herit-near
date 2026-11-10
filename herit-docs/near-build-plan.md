@@ -30,7 +30,8 @@ Deadline: **2026-11-14 23:59 UTC**. Aim to submit by 12:00 UTC.
 - [x] 2: [Rust workspace and test harness](checkpoints/02-workspace.md) (Claude)
 - [x] 3: [Estate state machine](checkpoints/03-estate-state-machine.md) (Claude, at your request)
 - [x] 4: [Estate attestations and check-in](checkpoints/04-estate-attestation.md) (Claude, at your request)
-- [ ] 5: [OutLayer attestor and Selfie Check](checkpoints/05-outlayer-selfie-check.md) (Claude + you)
+- [x] 5: [Selfie Check attestor](checkpoints/05-outlayer-selfie-check.md) (Claude + you): passed on testnet through the Next.js route; OutLayer worker ready for mainnet
+- [x] 6: [Heirs as real sub-accounts](checkpoints/06-heirs.md) (Claude, at your request)
 
 ---
 
@@ -59,6 +60,8 @@ Checked in the repo on 2026-11-09:
 | ETHGlobal code | Deleted from the `kaykay` branch up front; it stays on `main`. The `pre-hackathon` tag keeps it recoverable and the diff valid |
 | Branch | Build and push on `kaykay` |
 | Demo token | Our own NEP-141 mock (`mock-usdc-<suffix>.testnet`), not Circle USDC |
-| Non-native tech | Not used, with one exception: World ID Selfie Check, called from the OutLayer worker, because no confirmed NEAR-native option proves recurring liveness |
+| Non-native tech | Not used, with one exception: World ID Selfie Check, verified by the attestor, because no confirmed NEAR-native option proves recurring liveness |
+| Attestor | Testnet: the Next.js route `POST /api/attest` verifies the Selfie Check with World and signs with a local key from `.env.local`, as the Sepolia app did (decided 2026-11-10, Checkpoint 5 fallback). Mainnet: the OutLayer worker in `near/attestor-worker/`, built and tested, so nobody holds the key. Same rules in both, and the contract doesn't change |
+| World environment | `sandbox`, with the World sandbox testing app on an iPhone; it supports Selfie Check |
 | Tracks | `nfts`, `realworld`, `open` |
 | BTC, ETH, SOL | A stretch checkpoint, taken only once the core estate works on testnet. The estate holds them as NEAR Intents balances and pays them out in the heirs' split (guide §2.3 item 6). Mainnet only, with tiny amounts. Not Chain Signatures. First to cut |
