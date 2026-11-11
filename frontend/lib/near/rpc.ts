@@ -54,6 +54,41 @@ export async function view<T>(
   throw new ViewError(`no RPC answered: ${String(lastNetworkError)}`);
 }
 
+export type AccountView = { amount: string; locked: string; storage_usage: number; code_hash: string };
+
+/**
+ * An account's balance and storage, or null if it doesn't exist. Used to say whether an estate
+ * label is free and how much NEAR a wallet holds.
+ */
+export async function viewAccount(
+  accountId: string,
+  urls: readonly string[] = RPC_URLS,
+  fetcher: typeof fetch = fetch,
+): Promise<AccountView | null> {
+  const body = JSON.stringify({
+    jsonrpc: "2.0",
+    id: "herit",
+    method: "query",
+    params: { request_type: "view_account", finality: "optimistic", account_id: accountId },
+  });
+  let lastNetworkError: unknown;
+  for (const url of urls) {
+    let reply: { result?: AccountView; error?: { cause?: { name?: string }; message?: string } };
+    try {
+      const res = await fetcher(url, { method: "POST", headers: { "Content-Type": "application/json" }, body });
+      if (!res.ok) throw new Error(`${url} answered ${res.status}`);
+      reply = await res.json();
+    } catch (error) {
+      lastNetworkError = error;
+      continue;
+    }
+    if (reply.error?.cause?.name === "UNKNOWN_ACCOUNT") return null;
+    if (reply.error || !reply.result) throw new ViewError(`${accountId}: ${reply.error?.message ?? "no account view"}`);
+    return reply.result;
+  }
+  throw new ViewError(`no RPC answered: ${String(lastNetworkError)}`);
+}
+
 function toBase64(text: string): string {
   return btoa(String.fromCharCode(...new TextEncoder().encode(text)));
 }

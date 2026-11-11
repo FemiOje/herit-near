@@ -135,7 +135,8 @@ test("bad requests are refused", () => {
     { ...good, purpose: { kind: "checkin", estateLabel: "Alice" } },
     { ...good, purpose: { kind: "checkin", estateLabel: "a.b" } },
     { ...good, purpose: { kind: "claim", estateLabel: "alice" } },
-    { ...good, purpose: { kind: "withdraw", estateLabel: "alice" } },
+    { ...good, purpose: { kind: "withdraw", estateLabel: "Alice" } },
+    { ...good, purpose: { kind: "transfer", estateLabel: "alice" } },
     { ...good, subject: "" },
     { ...good, subject: "Bad Account" },
     { ...good, result: null },
@@ -197,4 +198,19 @@ test("a claim attestation carries the heir label", async () => {
   );
   assert.equal(out.attestation.action, 1);
   assert.equal(out.attestation.heir_label, "son");
+});
+
+test("a withdrawal is the grantor's own face, under the check-in's World action", async () => {
+  const req = parseRequest({
+    purpose: { kind: "withdraw", estateLabel: "alice", heirLabel: "son" },
+    subject: "alice-kaykay.testnet",
+    result: proof([selfie("0xabc")]),
+  });
+  assert.deepEqual(req.purpose, { kind: "withdraw", estateLabel: "alice" }, "no heir travels");
+  const out = await attest(req, fakeHost().host);
+  assert.equal(out.attestation.action, 2);
+  assert.equal(out.attestation.heir_label, null);
+  // Same action string, so the same nullifier, so the commitment the check-in bound.
+  const checkInOut = await attest(checkIn(), fakeHost().host);
+  assert.equal(out.attestation.commitment, checkInOut.attestation.commitment);
 });

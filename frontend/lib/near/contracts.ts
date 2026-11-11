@@ -61,6 +61,18 @@ export const estate = (id: string) => ({
   nftToken: (label: string) => view<NftToken | null>(id, "nft_token", { token_id: label }),
 });
 
+// ---------- NEP-141 tokens ----------
+
+export type FtMetadata = { symbol: string; decimals: number; name: string };
+
+export const ft = (token: string) => ({
+  metadata: () => view<FtMetadata>(token, "ft_metadata"),
+  balanceOf: (accountId: string) => view<string>(token, "ft_balance_of", { account_id: accountId }),
+  /** Null if `accountId` hasn't registered with the token, so it can't receive it yet. */
+  storageBalanceOf: (accountId: string) =>
+    view<{ total: string } | null>(token, "storage_balance_of", { account_id: accountId }),
+});
+
 /** The credential's state, from its `extra` JSON. */
 export function credentialState(token: NftToken | null): CredentialState | null {
   try {

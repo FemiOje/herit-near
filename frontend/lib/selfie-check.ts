@@ -8,9 +8,14 @@ import type { RpContext } from "@worldcoin/idkit";
  * and refuses a proof for any other action (near/attestor-worker/src/logic.rs).
  */
 
-/** What a check is for. The heir label travels as the proof's signal, not in the action. */
+/**
+ * What a check is for. The heir label travels as the proof's signal, not in the action. A
+ * withdrawal shares the check-in's action on purpose: the same human gets the same nullifier, so
+ * the commitment matches the face the first check-in bound.
+ */
 export type SelfieCheckPurpose =
   | { kind: "checkin"; estateLabel: string }
+  | { kind: "withdraw"; estateLabel: string }
   | { kind: "claim"; estateLabel: string; heirLabel: string };
 
 export const WORLD_ENVIRONMENTS = ["production", "staging", "sandbox"] as const;

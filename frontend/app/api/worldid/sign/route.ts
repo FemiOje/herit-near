@@ -120,12 +120,12 @@ function parsePurpose(body: unknown): SelfieCheckPurpose {
   if (!isLabel(estateLabel)) {
     throw new BadRequestError("estateLabel must be a single lowercase segment");
   }
-  if (kind === "checkin") return { kind, estateLabel };
+  if (kind === "checkin" || kind === "withdraw") return { kind, estateLabel };
   if (kind === "claim") {
     if (!isLabel(heirLabel)) {
       throw new BadRequestError("heirLabel must be a single lowercase segment");
     }
     return { kind, estateLabel, heirLabel };
   }
-  throw new BadRequestError("kind must be 'checkin' or 'claim'");
+  throw new BadRequestError("kind must be 'checkin', 'withdraw' or 'claim'");
 }

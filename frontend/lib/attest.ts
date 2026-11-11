@@ -16,6 +16,13 @@ import { estateAccountId, isLabel, worldAction, type SelfieCheckPurpose } from "
 export const TTL_NS = 15n * 60n * 1_000_000_000n;
 export const ACTION_CHECKIN = 0;
 export const ACTION_CLAIM = 1;
+/** The grantor taking funds back: the estate checks it against the face the check-in bound. */
+export const ACTION_WITHDRAW = 2;
+const ACTION_CODES: Record<SelfieCheckPurpose["kind"], number> = {
+  checkin: ACTION_CHECKIN,
+  claim: ACTION_CLAIM,
+  withdraw: ACTION_WITHDRAW,
+};
 /** Selfie Check's credential identifier in an IDKit result. `face` is its legacy alias. */
 const SELFIE_IDENTIFIERS = ["selfie", "face"];
 /** The only World ID protocol version accepted. See `selfieNullifier`. */
@@ -71,12 +78,12 @@ export function parseRequest(body: unknown): AttestRequest {
     throw new AttestError("subject must be the NEAR account that will send the transaction");
   }
   if (typeof result !== "object" || result === null) throw new AttestError("result is required");
-  if (kind === "checkin") return { purpose: { kind, estateLabel }, subject, result };
+  if (kind === "checkin" || kind === "withdraw") return { purpose: { kind, estateLabel }, subject, result };
   if (kind === "claim") {
     if (!isLabel(heirLabel)) throw new AttestError("heirLabel must be a single lowercase segment");
     return { purpose: { kind, estateLabel, heirLabel }, subject, result };
   }
-  throw new AttestError("kind must be 'checkin' or 'claim'");
+  throw new AttestError("kind must be 'checkin', 'withdraw' or 'claim'");
 }
 
 /**
@@ -185,7 +192,7 @@ export async function attest(req: AttestRequest, host: Host): Promise<AttestResp
   checkVerified(status, reply, result, action, nullifier);
 
   const heirLabel = purpose.kind === "claim" ? purpose.heirLabel : null;
-  const actionCode = purpose.kind === "claim" ? ACTION_CLAIM : ACTION_CHECKIN;
+  const actionCode = ACTION_CODES[purpose.kind];
   const commit = commitment(host.salt, nullifier);
   const nonce = host.randomNonce();
   const expiryNs = host.nowNs() + TTL_NS;

@@ -31,7 +31,7 @@ export function PageHeader({
   return (
     <header className="relative">
       <Star
-        className="-left-2 -top-3 hidden sm:block"
+        className="-left-6 -top-6 hidden sm:block"
         size={26}
         fill={starFill}
         rotate={starRotate}
