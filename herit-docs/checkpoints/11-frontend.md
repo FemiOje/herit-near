@@ -2,7 +2,7 @@
 
 Part of the [build plan](../near-build-plan.md). Starter notes: [the deployment guide](../near-deployment-guide.md) §9. Design: the Sepolia app on `main` (`frontend/design/DESIGN.md`, now copied here).
 
-**Status:** Parts 1 and 2 done (Part 2 committed 2026-11-11, with named heirs). Part 3 in progress: 3a done, Part 3 done (2026-11-11). Part 4 started
+**Status:** Parts 1–3 done (Part 3 committed 2026-11-11). Part 4 in progress
 **Who:** built together, in parts. Claude writes each part and walks you through it; you review, and the next part starts after your OK.
 
 ## Goal
@@ -215,6 +215,35 @@ near contract call-function as-transaction mock-usdc-kaykay.testnet ft_transfer 
 1. `/claim?estate=keytest.herit-near.testnet&heir=daughter`: unlocked, 0.2 NEAR claimable, no wallet needed.
 2. "Open your key file": daughter's file (kept outside git, in Claude's scratchpad for this test). Then "selfie check and claim": World App (sandbox); the claim is sent with the key.
 3. Opening son's file on daughter's page is refused: it's for another account.
+
+## Part 4: Landing, explorer, activity feed, deploy
+
+Built in three steps: **4a** the landing page and the estate explorer, **4b** the activity feed, **4c** the Vercel deploy (it publishes, so it waits for your OK).
+
+### 4a: The landing page and the estate explorer
+
+#### Understand first
+
+- **The Sepolia landing, told for NEAR.** Same sections and design (hero, the two failure modes, four steps, the clock, tracks, call to action); the story is now keyless estate accounts, heirs as accounts holding a soulbound NEP-171 credential, and NEAR plus stablecoins in the vault. The hero card is a fixed sample, so it never drifts into grace.
+- **Tracks.** NFTs That Do Something (primary) and Real-World Money, as chosen in the deployment guide.
+- **"Live on NEAR testnet"** lists the factory, the estate code's hash and mUSDC, each linked to NearBlocks. It says plainly that testnet signs attestations in a server route, and that the OutLayer TEE worker is built for mainnet.
+- **The explorer needs no indexer.** The factory keeps every estate in opening order (`estates_count`, `estates`), so the newest are read from the end, 10 at a time. Each row's status, unlock time, heirs and vault come from the estate itself as you look. An estate without a bound face or heirs reads "setup unfinished". Opening a row lists the heirs, each linked to their heir view.
+
+#### Built
+
+| Item | Where |
+|---|---|
+| Landing copy for NEAR | `lib/content/landing.ts` |
+| Sections | `components/landing/{hero,estate-preview-card,problem-section,how-it-works-section,clock-section,tracks-section,on-chain-section,call-to-action}.tsx` |
+| The explorer: newest estates from the factory, rows from each estate | `lib/estate/use-explorer.ts`, `components/landing/estates-explorer.tsx` |
+| Scroll reveal; a call to action that connects a NEAR wallet first | `components/ui/reveal.tsx`, `components/wallet/connect-cta.tsx` |
+| The page | `app/page.tsx` |
+
+#### Try it
+
+1. `/`: read down the page; "see live estates" jumps to the explorer.
+2. The explorer lists `keytest`, `kay`, `alice` and any estate opened since, newest first. Open `keytest`: son and daughter, each linked to their heir view.
+3. "Open an estate" asks for a wallet, then goes to `/setup`.
 
 ## Check
 

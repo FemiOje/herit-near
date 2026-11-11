@@ -1,28 +1,28 @@
-import Link from "next/link";
+import { CallToAction } from "@/components/landing/call-to-action";
+import { ClockSection } from "@/components/landing/clock-section";
+import { EstatesExplorer } from "@/components/landing/estates-explorer";
+import { Hero } from "@/components/landing/hero";
+import { HowItWorksSection } from "@/components/landing/how-it-works-section";
+import { OnChainSection } from "@/components/landing/on-chain-section";
+import { ProblemSection } from "@/components/landing/problem-section";
+import { TracksSection } from "@/components/landing/tracks-section";
 import { Footer } from "@/components/layout/footer";
 import { SiteNav } from "@/components/layout/site-nav";
 
-/** A placeholder home: Checkpoint 11, Part 4 brings the full landing over from the Sepolia app. */
-export default function Home() {
+export default function LandingPage() {
   return (
     <>
       <SiteNav />
-      <main className="flex-1 px-4 pb-16 pt-16 sm:px-6">
-        <section className="mx-auto max-w-4xl">
-          <h1>inheritance gated by proof of life</h1>
-          <p className="mt-6 max-w-2xl text-lg text-muted">
-            Open a keyless estate on NEAR. Check in with a World ID Selfie Check. If you stop, your heirs&apos;
-            soulbound credentials wake up and they claim their share.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/dashboard" className="btn">
-              go to the app
-            </Link>
-            <Link href="/claim" className="btn btn-ghost">
-              i am an heir
-            </Link>
-          </div>
-        </section>
+      <main className="flex-1">
+        <Hero />
+        <ProblemSection />
+        <HowItWorksSection />
+        <ClockSection />
+        {/* After the clock: the statuses in the table only mean something once that section has explained them. */}
+        <EstatesExplorer />
+        <TracksSection />
+        <OnChainSection />
+        <CallToAction />
       </main>
       <Footer />
     </>
