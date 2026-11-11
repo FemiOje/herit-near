@@ -38,8 +38,10 @@ const STAGES = [
 export type SelfieCheckProps = {
   open: boolean;
   purpose: SelfieCheckPurpose;
-  /** The transaction the attestation goes into. */
-  transaction: (signed: Signed) => Call;
+  /** The transaction the attestation goes into, or a batch sent under one approval. */
+  transaction: (signed: Signed) => Call | Call[];
+  /** Called once the transaction (or the whole batch) has landed. */
+  onDone?: () => void;
   /** What the send button says: "check in", "withdraw 1 NEAR". */
   actionLabel: string;
   successCopy: string;
@@ -52,7 +54,7 @@ export function SelfieCheckModal({ open, ...props }: SelfieCheckProps) {
   return <SelfieCheckDialog {...props} />;
 }
 
-function SelfieCheckDialog({ purpose, transaction, actionLabel, successCopy, onClose }: Omit<SelfieCheckProps, "open">) {
+function SelfieCheckDialog({ purpose, transaction, actionLabel, successCopy, onClose, onDone }: Omit<SelfieCheckProps, "open">) {
   const { accountId } = useWallet();
   const tx = useTx();
   const [stage, setStage] = useState(0);
@@ -192,9 +194,12 @@ function SelfieCheckDialog({ purpose, transaction, actionLabel, successCopy, onC
           ) : null}
 
           <TxStatus tx={tx} success="confirmed on NEAR testnet" className="mt-4" />
+          {tx.phase === "error" && tx.completed ? (
+            <p className="hint">{tx.completed} of the transactions landed before this one failed; trying again sends only what&apos;s still missing.</p>
+          ) : null}
 
           {signed && !sent ? (
-            <button type="button" className="btn mt-6 w-full" disabled={tx.busy} onClick={() => void tx.send(transaction(signed))}>
+            <button type="button" className="btn mt-6 w-full" disabled={tx.busy} onClick={() => void tx.send(transaction(signed)).then((r) => r && onDone?.())}>
               {tx.busy ? "confirm in your wallet…" : tx.phase === "error" ? `try again: ${actionLabel}` : actionLabel}
             </button>
           ) : null}

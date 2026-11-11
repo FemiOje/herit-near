@@ -54,7 +54,14 @@ export async function view<T>(
   throw new ViewError(`no RPC answered: ${String(lastNetworkError)}`);
 }
 
-export type AccountView = { amount: string; locked: string; storage_usage: number; code_hash: string };
+export type AccountView = {
+  amount: string;
+  locked: string;
+  storage_usage: number;
+  code_hash: string;
+  /** Set when the account runs a Global Contract by hash, as estates do. */
+  global_contract_hash?: string | null;
+};
 
 /**
  * An account's balance and storage, or null if it doesn't exist. Used to say whether an estate

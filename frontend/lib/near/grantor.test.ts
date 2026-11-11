@@ -112,3 +112,17 @@ test("durations and countdowns read as people say them", () => {
   assert.equal(formatCountdown(2 * 3_600 + 15 * 60), "02h 15m");
   assert.equal(formatCountdown(3 * 86_400 + 4 * 3_600), "3d 04h");
 });
+
+test("only estates on the code from before named heirs refuse them", async () => {
+  const { supportsNamedHeirs } = await import("./calls.ts");
+  assert.equal(supportsNamedHeirs("87NJpRzyMsaL4WWYspngjbHoLBKPJSjiyrFEpDKXNgE8"), false);
+  assert.equal(supportsNamedHeirs("65rC6sBJGosXHCGC6ityR3poJ68ecHDZsNRAPZQjkX2p"), true);
+  assert.equal(supportsNamedHeirs(null), true, "not opened yet: the factory's current code");
+});
+
+test("implicit accounts needn't exist before they're named", async () => {
+  const { isImplicitAccount } = await import("./account.ts");
+  assert.ok(isImplicitAccount("a".repeat(64)));
+  assert.ok(isImplicitAccount(`0x${"b".repeat(40)}`));
+  assert.ok(!isImplicitAccount("kay.testnet"));
+});

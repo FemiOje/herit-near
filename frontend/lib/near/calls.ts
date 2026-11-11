@@ -36,6 +36,8 @@ export type Signed = {
 export const MIN_OPEN_DEPOSIT = parseNear("0.11");
 /** Covers a heir record's storage plus the 0.1 NEAR seed sent to the heir's new account. */
 export const ADD_HEIR_DEPOSIT = parseNear("0.2");
+/** A named heir's record: storage only, no account to create or seed. */
+export const NAMED_HEIR_DEPOSIT = parseNear("0.01");
 /** The token's listing plus the estate's 0.00125 NEAR registration with it. */
 export const ADD_TOKEN_DEPOSIT = parseNear("0.05");
 /** A new share override's storage. */
@@ -121,6 +123,15 @@ export const calls = {
     deposit: ADD_HEIR_DEPOSIT,
   }),
 
+  /** An account the heir already has. The estate refuses it on code published before named heirs. */
+  addHeirAccount: (estate: string, label: string, accountId: string, relationship: string, defaultBps: number): Call => ({
+    receiverId: estate,
+    method: "add_heir_account",
+    args: { label, account_id: accountId, relationship, default_bps: defaultBps },
+    tgas: 30,
+    deposit: NAMED_HEIR_DEPOSIT,
+  }),
+
   removeHeir: (estate: string, label: string): Call => ({
     receiverId: estate,
     method: "remove_heir",
@@ -141,4 +152,18 @@ export const calls = {
 /** An ed25519 public key as `add_heir` takes it. */
 export function isPublicKey(value: string): boolean {
   return /^ed25519:[1-9A-HJ-NP-Za-km-z]{43,44}$/.test(value.trim());
+}
+
+/**
+ * Estate code published before `add_heir_account` (Checkpoint 10). Estates keep the code they were
+ * opened with, so these can only take heirs by key. Every later code has named heirs.
+ */
+const CODE_WITHOUT_NAMED_HEIRS: readonly string[] = ["87NJpRzyMsaL4WWYspngjbHoLBKPJSjiyrFEpDKXNgE8"];
+
+/**
+ * Whether an estate running `globalContractHash` can name an existing account as an heir. Null is
+ * an estate that doesn't exist yet: the factory opens new ones with its current code, which can.
+ */
+export function supportsNamedHeirs(globalContractHash: string | null | undefined): boolean {
+  return !globalContractHash || !CODE_WITHOUT_NAMED_HEIRS.includes(globalContractHash);
 }

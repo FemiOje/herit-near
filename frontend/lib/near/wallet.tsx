@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { NearConnector } from "@hot-labs/near-connect";
 
+import type { Call } from "./calls";
 import { NETWORK, RPC_URLS } from "./config";
 
 /**
@@ -28,13 +29,33 @@ type WalletState = {
   disconnect: () => Promise<void>;
   /** Signs and sends one function call; throws `TxError` if it fails on chain. */
   call: (receiverId: string, method: string, args: object, options?: CallOptions) => Promise<CallResult>;
+  /**
+   * Several calls under one wallet approval, sent in order. Throws `TxError` naming the first
+   * that failed; `TxError.completed` says how many landed before it.
+   */
+  callMany: (calls: readonly Call[]) => Promise<CallResult[]>;
 };
 
 export class TxError extends Error {
-  constructor(message: string, readonly txHash?: string) {
+  constructor(
+    message: string,
+    readonly txHash?: string,
+    /** In a batch: how many transactions landed before this one failed. */
+    readonly completed = 0,
+  ) {
     super(message);
   }
 }
+
+const functionCall = (c: Pick<Call, "method" | "args" | "tgas" | "deposit">) => ({
+  type: "FunctionCall" as const,
+  params: {
+    methodName: c.method,
+    args: c.args,
+    gas: (BigInt(c.tgas) * BigInt(1e12)).toString(),
+    deposit: c.deposit.toString(),
+  },
+});
 
 const WalletContext = createContext<WalletState | null>(null);
 
@@ -88,15 +109,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         signerId: accountId,
         receiverId,
         actions: [
-          {
-            type: "FunctionCall",
-            params: {
-              methodName: method,
-              args,
-              gas: (BigInt(options.tgas ?? 30) * BigInt(1e12)).toString(),
-              deposit: (options.deposit ?? BigInt(0)).toString(),
-            },
-          },
+          functionCall({ method, args: args as Record<string, unknown>, tgas: options.tgas ?? 30, deposit: options.deposit ?? BigInt(0) }),
         ],
       });
       return readOutcome(outcome);
@@ -104,9 +117,31 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     [accountId],
   );
 
+  const callMany = useCallback(
+    async (calls: readonly Call[]) => {
+      if (!connector.current || !accountId) throw new TxError("connect a wallet first");
+      const wallet = await connector.current.wallet();
+      const outcomes = await wallet.signAndSendTransactions({
+        signerId: accountId,
+        transactions: calls.map((c) => ({ receiverId: c.receiverId, actions: [functionCall(c)] })),
+      });
+      const results: CallResult[] = [];
+      for (const outcome of outcomes) {
+        try {
+          results.push(readOutcome(outcome));
+        } catch (error) {
+          if (error instanceof TxError) throw new TxError(error.message, error.txHash, results.length);
+          throw error;
+        }
+      }
+      return results;
+    },
+    [accountId],
+  );
+
   const value = useMemo(
-    () => ({ accountId, loading, connect, disconnect, call }),
-    [accountId, loading, connect, disconnect, call],
+    () => ({ accountId, loading, connect, disconnect, call, callMany }),
+    [accountId, loading, connect, disconnect, call, callMany],
   );
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
 }

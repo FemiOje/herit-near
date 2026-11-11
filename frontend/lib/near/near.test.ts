@@ -18,6 +18,9 @@ test("account ids follow NEAR's rule", () => {
   }
   assert.ok(isLabel("daughter-2"));
   assert.ok(!isLabel("a.b"));
+  // One character is a valid segment, as the contract's own tests accept "x" and "0".
+  assert.ok(isLabel("a") && isLabel("0"));
+  assert.ok(!isLabel("") && !isLabel("-a") && !isLabel("a--b") && !isLabel("Son"));
 });
 
 test("estates and heirs map onto each other", () => {
