@@ -148,6 +148,23 @@ What it means:
 
 The script now attaches 50 Tgas to claims.
 
+## Republished: named heirs (2026-11-11)
+
+During Checkpoint 11 Part 2, an heir can now be an account the heir already has, such as `kaynearhackathon2.testnet`, as well as a sub-account made from their key. `add_heir_account(label, account_id, relationship, default_bps)` records the account and mints the credential at once; the heir claims from it with their own wallet. It refuses the grantor, the estate and anything under it, and an account that is already an heir. Both kinds share the labels, the 100% and the ten slots. The factory gained `set_estate_code` (`#[private]`, like `set_attestor`), so it could switch to the new code without losing its list of estates.
+
+Estates opened before this, such as `alice.herit-near.testnet`, keep the code they were built from (`87NJpRzy…`) and only have `add_heir`.
+
+| What | Code | Transaction |
+|---|---|---|
+| Source, pushed to `kaykay` | commit `cc402c7`, embedded in both wasm files | |
+| Publisher topped up: 4.9 + 9.9 from the spare funders, 16 from the factory | | [`5hpPb1SS…`](https://testnet.nearblocks.io/txns/5hpPb1SSZvEvSWGd8wVCupKAWpCVkNP82UBBmkKjzDvx), [`6tXFuPzk…`](https://testnet.nearblocks.io/txns/6tXFuPzk1NDKJBthnCgwq6nKwbEphEoQ6Lbn7Txrgi3u), [`EVLFzp73…`](https://testnet.nearblocks.io/txns/EVLFzp73rh1piAdQd3pBLs25AavXeqfFeSfSPrtjWyn8) |
+| **Estate code, published by hash** | `65rC6sBJGosXHCGC6ityR3poJ68ecHDZsNRAPZQjkX2p`, 306,842 bytes, reproducible | [`rJEwbyoU…`](https://testnet.nearblocks.io/txns/rJEwbyoU9pQQz9W7xN52AoCPDKYx2aoPdY53eZFKTBR) |
+| **Factory redeployed, `set_estate_code` in the same transaction** | `CKuVDcLu4jJn1EpP4vU1hB7Hs3jXdtXH8Awudo9TJs1i`, 153,629 bytes, reproducible | [`32Lkiw9Z…`](https://testnet.nearblocks.io/txns/32Lkiw9Z6h5bHCYJ9gtT9B3AAkmQPPWmaZTEEjg3CT6R) |
+| `alice-kaykay.testnet` opens `kay.herit-near.testnet` (runs `65rC6sBJ…`) | | [`Hrgry7oi…`](https://testnet.nearblocks.io/txns/Hrgry7oimM2psw4y8FChWup29RUdLd6owDp4kYdBBcTg) |
+| …and names `kaynearhackathon2.testnet` as heir `kay2` (50%): `nft_mint`, `heir_added`, `created: true` | | [`6VYrFn9A…`](https://testnet.nearblocks.io/txns/6VYrFn9AfLFREkQ4GNZfa3rWPtQm6PsikfZ3YraUrUzJ) |
+
+Tested first: 181 unit tests (16 new, plus named heirs in the heir invariants), 17 factory unit tests (2 new), and all 38 sandbox tests on the reproducible wasm, among them a named heir and a sub-account heir both paid NEAR and mUSDC. Cost: about 30.7 NEAR burned by the publish. Left: publisher 1.83 NEAR, factory 10.02 NEAR.
+
 ## Checked afterwards
 
 - `herit-near.testnet` `version`: `0.1.0`; `config`: estate code hash `87NJpRzy…`, attestor `ed25519:FzTUQSiL…` (the testnet route's key from Checkpoint 5); `estates_count`: 0.
