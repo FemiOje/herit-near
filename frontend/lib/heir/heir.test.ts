@@ -80,3 +80,21 @@ test("a claim is worth sending only when something unpaid is claimable", () => {
   assert.ok(!hasSomethingToClaim([line("paid", 5), line("claimable", 0), line("none", 0)]));
   assert.ok(!hasSomethingToClaim([line("expected", 9)]));
 });
+
+test("a claim's gas and deposit grow with its payouts, within NEAR's limits", async () => {
+  const { claimCost, spendable } = await import("./claim-cost.ts");
+  const { parseNear } = await import("../near/format.ts");
+  // NEAR and one token: what the smoke run sent by hand (50 Tgas, 0.01 NEAR), with headroom.
+  const one = claimCost(1, 1);
+  assert.equal(one.tgas, 55);
+  assert.equal(one.deposit, parseNear("0.01025") + BigInt(1));
+  // A key heir's 0.1 NEAR seed covers it: 0.055 NEAR held for gas plus the deposit.
+  assert.ok(one.held < parseNear("0.1"), `held ${one.held}`);
+  // The contract's ten assets stay under the 300 Tgas a transaction may attach.
+  assert.ok(claimCost(1, 9).tgas <= 300);
+  assert.ok(claimCost(1, 9).held > parseNear("0.1"), "a big estate needs more than the seed");
+  assert.equal(claimCost(1, 0).tgas, 30);
+  // Storage locks part of a balance.
+  assert.equal(spendable({ amount: parseNear("0.1").toString(), storage_usage: 182 }), parseNear("0.1") - BigInt(182) * BigInt(10) ** BigInt(19));
+  assert.equal(spendable({ amount: "5", storage_usage: 182 }), BigInt(0));
+});

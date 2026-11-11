@@ -34,8 +34,8 @@ export class AttestError extends Error {}
 export type AttestRequest = {
   purpose: SelfieCheckPurpose;
   /**
-   * The NEAR account that will send the transaction: the grantor for a check-in, the heir's
-   * sub-account for a claim. The contract checks who may call, so a wrong subject only produces an
+   * The NEAR account that will send the transaction: the grantor for a check-in or withdrawal,
+   * the heir's account for a claim (their own named account, or their `<label>.<estate>`). The contract checks who may call, so a wrong subject only produces an
    * attestation nobody can use.
    */
   subject: string;

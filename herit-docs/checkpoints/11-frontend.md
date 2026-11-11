@@ -2,7 +2,7 @@
 
 Part of the [build plan](../near-build-plan.md). Starter notes: [the deployment guide](../near-deployment-guide.md) §9. Design: the Sepolia app on `main` (`frontend/design/DESIGN.md`, now copied here).
 
-**Status:** Parts 1 and 2 done (Part 2 committed 2026-11-11, with named heirs). Part 3 in progress: 3a done (2026-11-11), 3b next
+**Status:** Parts 1 and 2 done (Part 2 committed 2026-11-11, with named heirs). Part 3 in progress: 3a done, 3a and 3b done, 3c next (2026-11-11)
 **Who:** built together, in parts. Claude writes each part and walks you through it; you review, and the next part starts after your OK.
 
 ## Goal
@@ -151,6 +151,38 @@ near contract call-function as-transaction mock-usdc-kaykay.testnet ft_transfer 
 1. `/claim` with `kaynearhackathon2.testnet` connected (or typed into "look up"): `kay.herit-near.testnet`, heir `kay2`.
 2. `/claim?estate=alice.herit-near.testnet&heir=son`: unlocked, both assets paid, credential `claimed`.
 3. `/claim?estate=kay.herit-near.testnet&heir=kay2`: sealed, clock not started; no vault yet.
+
+### 3b: The claim
+
+#### Understand first
+
+- **One button, every check first.** "Selfie check and claim" is enabled only when the estate is unlocked, the connected wallet is the heir's account, something unpaid has an amount, and that account holds enough NEAR. Otherwise the button says which one is missing. The claim itself pokes an unlocked estate nobody has poked, which freezes the balances.
+- **Sized to its payouts.** Gas comes from the estate's own constants: about 15 Tgas for the call, 5 per NEAR payout (transfer and `on_paid`), and 25 per token payout (registration, transfer, `on_paid`), plus 10 of headroom, rounded up to 5. NEAR and one token is 55 Tgas, and the contract's 10 assets stay under 300. The deposit covers what the claim writes (0.005 NEAR plus 0.002 per asset) and, per token, the heir's registration with it (0.00125 NEAR) plus the 1 yoctoNEAR `ft_transfer` needs. The estate refunds the surplus.
+- **The NEAR the heir must hold.** NEAR reserves attached gas up front at about 0.1 NEAR per 100 Tgas (found in Checkpoint 10), so the account must hold that plus the deposit: 0.065 NEAR for NEAR and one token, less than a key heir's 0.1 NEAR seed. The card shows the shortfall when there is one, and anyone can send the rest.
+- **The attestation names the sender.** The Selfie Check's subject is the connected account. `/api/attest` accepted any account all along; only a comment said otherwise.
+- **Key heirs wait for 3c.** Their button says signing with the key file comes next.
+
+#### Built
+
+| Item | Where |
+|---|---|
+| A claim's gas, deposit and the NEAR to hold; what an account can spend | `lib/heir/claim-cost.ts` |
+| The `claim` call | `lib/near/calls.ts` |
+| The button, its reasons, "NEAR for the gas", and the Selfie Check that sends the claim | `components/claim/share-card.tsx` |
+
+#### Tests
+
+| Kind | Where | What |
+|---|---|---|
+| Unit (1) | `lib/heir/heir.test.ts` | NEAR and one token is 55 Tgas and 0.01025 NEAR + 1 yocto, held under the 0.1 NEAR seed; 10 assets stay under 300 Tgas but need more than the seed; storage is subtracted from a balance |
+| Live | | On `kay.herit-near.testnet` (1 NEAR, 10 mUSDC, dev check-in, 2 min + 1 min): the named heir `kay-cousin-kaykay.testnet` (25%, a faucet account) claimed with exactly what the app sends, 55 Tgas and 0.01025 NEAR + 1 yocto ([`7UJnn88i…`](https://testnet.nearblocks.io/txns/7UJnn88iX5f4naW5gAToi862Jyswm8Kiu3XGNuSbQHHk)): `snapshotted`, `unlocked`, `claim_attested`, `claim_settled`, `claimed` ×2. It got 0.2449 NEAR (its 0.25 less about 0.005 of costs) and 2.5 mUSDC |
+| Build | | `tsc`, `eslint`, `next build` |
+
+#### Try it
+
+1. Connect `kaynearhackathon2.testnet` and open `/claim?estate=kay.herit-near.testnet&heir=kay2`: unlocked, 0.5 NEAR and 5 mUSDC claimable, every check met.
+2. "Selfie check and claim": World App (sandbox), then approve the claim in the wallet. The lines turn "paid" and the credential `claimed`.
+3. Connected as another account, the button says to connect `kaynearhackathon2.testnet`. On `alice`'s `son`, it says a key heir signs with their key file (3c).
 
 ## Check
 

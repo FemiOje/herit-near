@@ -132,6 +132,15 @@ export const calls = {
     deposit: NAMED_HEIR_DEPOSIT,
   }),
 
+  /** The heir's claim; `cost` from `claimCost`, which sizes it to the payouts it will send. */
+  claim: (estate: string, label: string, signed: Signed, cost: { tgas: number; deposit: bigint }): Call => ({
+    receiverId: estate,
+    method: "claim",
+    args: { label, ...signed },
+    tgas: cost.tgas,
+    deposit: cost.deposit,
+  }),
+
   removeHeir: (estate: string, label: string): Call => ({
     receiverId: estate,
     method: "remove_heir",
