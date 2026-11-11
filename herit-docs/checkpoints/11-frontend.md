@@ -245,6 +245,31 @@ Built in three steps: **4a** the landing page and the estate explorer, **4b** th
 2. The explorer lists `keytest`, `kay`, `alice` and any estate opened since, newest first. Open `keytest`: son and daughter, each linked to their heir view.
 3. "Open an estate" asks for a wallet, then goes to `/setup`.
 
+### 4b: The activity feed
+
+#### Understand first
+
+- **From the estate's own logs.** The estate logs a NEP-297 `herit` event for everything that changes it. `/api/activity?estate=` asks FastNEAR's Transactions API for the estate's latest 50 transactions (`/v0/account`), then their receipts (`/v0/transactions`, 20 hashes a call, since the limit isn't documented), and keeps the events from receipts the estate itself executed. No partner offers indexing, so this is the one non-partner service, as the deployment guide planned. It needs no key today; it runs on the server so one can be added without reaching the browser.
+- **Failed receipts don't count.** A failed receipt keeps its logs although everything it did was rolled back. Found live: `keytest`'s second claim, refused with "nothing to claim", still logged `claim_attested`.
+- **Not an open proxy.** The route serves only estates of our factory.
+- **Every event reads as a sentence**, with amounts in NEAR or mUSDC, a tone, a NearBlocks link and who signed. Timers, balances and status stay live contract reads.
+
+#### Built
+
+| Item | Where |
+|---|---|
+| Parsing FastNEAR's transactions into the estate's events; describing each | `lib/activity/events.ts` |
+| The route | `app/api/activity/route.ts` |
+| The hook and the card, on the dashboard and the heir view | `lib/activity/use-activity.ts`, `components/estate/activity-card.tsx` |
+
+#### Tests
+
+| Kind | Where | What |
+|---|---|---|
+| Unit (3) | `lib/activity/activity.test.ts` | Only the estate's own `herit` events count, newest first and in logged order (not the factory's, not NEP-171's, not plain logs); failed receipts are skipped; every event reads as a sentence |
+| Live | | Through the dev server: `keytest` gives its 10 real events, opening to claim, without the failed second claim; `alice` gives its whole smoke-run life (19 events, every kind it logged); an estate outside the factory gets 400 |
+| Build | | `tsc`, `eslint`, `next build` |
+
 ## Check
 
 ```bash

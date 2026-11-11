@@ -5,6 +5,7 @@ import Link from "next/link";
 import { MyEstates } from "@/components/dashboard/my-estates";
 import { ProofOfLifeCard } from "@/components/dashboard/proof-of-life-card";
 import { VaultCard } from "@/components/dashboard/vault-card";
+import { ActivityCard } from "@/components/estate/activity-card";
 import { StatusPill } from "@/components/estate/status-pill";
 import { HeirsCard } from "@/components/heirs/heirs-card";
 import { PageHeader } from "@/components/layout/page-header";
@@ -73,7 +74,10 @@ export function EstateView({ id, focus }: { id: string; focus: "dashboard" | "he
 
       {focus === "dashboard" ? (
         <div className="grid gap-6 lg:grid-cols-[1fr_1.1fr]">
-          <ProofOfLifeCard id={id} header={header.data} status={status.data} isGrantor={isGrantor} />
+          <div className="space-y-6">
+            <ProofOfLifeCard id={id} header={header.data} status={status.data} isGrantor={isGrantor} />
+            <ActivityCard id={id} />
+          </div>
           <div className="space-y-6">
             <VaultCard id={id} grantor={header.data.grantor} rows={vault} faceBound={header.data.faceBound} open={open} isGrantor={isGrantor} />
             {heirs.data ? <HeirsCard id={id} heirs={heirs.data} assets={assets} writable={isGrantor && open} compact /> : null}

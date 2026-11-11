@@ -8,6 +8,7 @@ import { CoHeirsCard } from "@/components/claim/co-heirs-card";
 import { CredentialCard } from "@/components/claim/credential-card";
 import { ShareCard } from "@/components/claim/share-card";
 import { UnlockBanner } from "@/components/claim/unlock-banner";
+import { ActivityCard } from "@/components/estate/activity-card";
 import { StatusPill } from "@/components/estate/status-pill";
 import { PageHeader } from "@/components/layout/page-header";
 import { ArrowRightIcon, HeirIcon } from "@/components/ui/icons";
@@ -142,6 +143,7 @@ function HeirView({ id, label }: { id: string; label: string }) {
         <div className="space-y-6">
           <CredentialCard id={id} heir={heir} />
           <CoHeirsCard heirs={heirs.data} label={label} />
+          <ActivityCard id={id} />
         </div>
       </div>
     </>
