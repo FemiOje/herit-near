@@ -2,7 +2,7 @@
 
 Part of the [build plan](../near-build-plan.md). Starter notes: [the deployment guide](../near-deployment-guide.md) §9. Design: the Sepolia app on `main` (`frontend/design/DESIGN.md`, now copied here).
 
-**Status:** Parts 1 and 2 done (Part 2 committed 2026-11-11, with named heirs). Part 3 in progress: 3a done, 3a and 3b done, 3c next (2026-11-11)
+**Status:** Parts 1 and 2 done (Part 2 committed 2026-11-11, with named heirs). Part 3 in progress: 3a done, Part 3 done (2026-11-11). Part 4 started
 **Who:** built together, in parts. Claude writes each part and walks you through it; you review, and the next part starts after your OK.
 
 ## Goal
@@ -15,8 +15,8 @@ The Sepolia app's design and screens, on NEAR: wagmi, viem, ENS and the subgraph
 |---|---|---|
 | 1 | **Shell and NEAR plumbing:** theme, layout, nav and footer from `main`; HOT `near-connect` wallet; typed reads of the factory and estates; config | Done |
 | 2 | **The grantor's flow:** setup through the factory; dashboard with check-in by Selfie Check; the vault (deposits, token, withdraw by Selfie Check); heirs and shares | Done |
-| 3 | **The heir's flow:** credential, claimable amounts, the claim with the heir's Selfie Check; gas by asset count. Decision: how an heir signs | In progress |
-| 4 | **Landing, explorer, activity feed, deploy:** the landing page; estates from the factory; `/api/activity` over FastNEAR; credentials with their IPFS images; Vercel | |
+| 3 | **The heir's flow:** credential, claimable amounts, the claim with the heir's Selfie Check; gas by asset count. Decision: how an heir signs | Done |
+| 4 | **Landing, explorer, activity feed, deploy:** the landing page; estates from the factory; `/api/activity` over FastNEAR; credentials with their IPFS images; Vercel | In progress |
 
 ## Part 1: Shell and NEAR plumbing
 
@@ -183,6 +183,38 @@ near contract call-function as-transaction mock-usdc-kaykay.testnet ft_transfer 
 1. Connect `kaynearhackathon2.testnet` and open `/claim?estate=kay.herit-near.testnet&heir=kay2`: unlocked, 0.5 NEAR and 5 mUSDC claimable, every check met.
 2. "Selfie check and claim": World App (sandbox), then approve the claim in the wallet. The lines turn "paid" and the credential `claimed`.
 3. Connected as another account, the button says to connect `kaynearhackathon2.testnet`. On `alice`'s `son`, it says a key heir signs with their key file (3c).
+
+### 3c: Signing with the key file
+
+#### Understand first
+
+- **No wallet for a key heir.** Their account, `<label>.<estate>`, was made by the estate and holds only the key they made, so no wallet knows it. On the heir view they open the key file they saved. The app reads it in the browser, signs the claim there with `near-api-js`, and sends only the signed transaction. The key is held in memory for that tab: never stored, never uploaded. "Forget it" drops it.
+- **Checked before it's used.** The file's private key must produce its public key, the file's `account_id` (if it has one) must be this heir's, and the chain must list the key as a **full-access** key of the account (`view_access_key`). A claim attaches a deposit, which a function-call key can't.
+- **Same path as a wallet.** `useTx` and the Selfie Check modal take an optional key signer. With one, the attestation names the key's account and the claim goes out through it; the result is read the same way (`lib/near/outcome.ts`, moved out of the wallet module so tests can run it).
+
+#### Built
+
+| Item | Where |
+|---|---|
+| Key file: parse, match the halves, check it's a full-access key of the account | `lib/near/key-file.ts`, `lib/near/rpc.ts` (`viewAccessKey`) |
+| Signing and sending with that key | `lib/near/key-signer.ts` |
+| Reading an outcome, shared by wallet and key | `lib/near/outcome.ts` |
+| `useTx(signer)`, and the modal's `signer` | `lib/near/use-tx.ts`, `components/selfie-check/selfie-check-modal.tsx` |
+| "Open your key file" on the heir view | `components/claim/key-file-loader.tsx`, `components/claim/share-card.tsx` |
+
+#### Tests
+
+| Kind | Where | What |
+|---|---|---|
+| Unit (4) | `lib/near/key-file.test.ts` | Key files from the heirs page and the NEAR CLI read back; broken, malformed and mismatched files are refused; the key must be a full-access key of this account; wallet and key outcomes read the same way, panics in the contract's words |
+| Live | | `keytest.herit-near.testnet`, opened through the factory with two key heirs (40% each), 0.5 NEAR, a dev check-in, 2 min + 1 min. Through the app's own modules: son's key file passes, daughter's is refused for son; son claims with `keySigner` at 30 Tgas and 0.007 NEAR ([`CwePayHh…`](https://testnet.nearblocks.io/txns/CwePayHhLZ31BWHUaTwbL4VLWtYsRkzw9njGBnZHhHuD)), one transfer; a second claim fails with "nothing to claim" |
+| Build | | `tsc`, `eslint`, `next build` |
+
+#### Try it
+
+1. `/claim?estate=keytest.herit-near.testnet&heir=daughter`: unlocked, 0.2 NEAR claimable, no wallet needed.
+2. "Open your key file": daughter's file (kept outside git, in Claude's scratchpad for this test). Then "selfie check and claim": World App (sandbox); the claim is sent with the key.
+3. Opening son's file on daughter's page is refused: it's for another account.
 
 ## Check
 

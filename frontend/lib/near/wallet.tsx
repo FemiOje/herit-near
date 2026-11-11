@@ -5,6 +5,7 @@ import type { NearConnector } from "@hot-labs/near-connect";
 
 import type { Call } from "./calls";
 import { NETWORK, RPC_URLS } from "./config";
+import { TxError, readOutcome, type CallResult } from "./outcome";
 
 /**
  * The connected NEAR wallet, through HOT's `near-connect` (HOT, Meteor, Intear, MyNearWallet…).
@@ -18,7 +19,7 @@ export type CallOptions = {
   deposit?: bigint;
 };
 
-export type CallResult = { txHash: string; value: unknown };
+export { TxError, panicMessage, type CallResult } from "./outcome";
 
 type WalletState = {
   /** The signed-in account, or null. */
@@ -35,17 +36,6 @@ type WalletState = {
    */
   callMany: (calls: readonly Call[]) => Promise<CallResult[]>;
 };
-
-export class TxError extends Error {
-  constructor(
-    message: string,
-    readonly txHash?: string,
-    /** In a batch: how many transactions landed before this one failed. */
-    readonly completed = 0,
-  ) {
-    super(message);
-  }
-}
 
 const functionCall = (c: Pick<Call, "method" | "args" | "tgas" | "deposit">) => ({
   type: "FunctionCall" as const,
@@ -150,42 +140,4 @@ export function useWallet(): WalletState {
   const state = useContext(WalletContext);
   if (!state) throw new Error("useWallet needs a WalletProvider");
   return state;
-}
-
-type Outcome = {
-  transaction?: { hash?: string };
-  transaction_outcome?: { id?: string };
-  status?: { SuccessValue?: string; Failure?: unknown } | string;
-  receipts_outcome?: { outcome?: { status?: { Failure?: unknown } } }[];
-};
-
-/**
- * The transaction hash and the call's return value, or a `TxError` naming the contract's panic.
- * A receipt can fail after the transaction itself succeeded (a callback, a transfer); the estate
- * logs those itself, so only the main status counts as failure here.
- */
-function readOutcome(raw: unknown): CallResult {
-  const outcome = raw as Outcome;
-  const txHash = outcome.transaction?.hash ?? outcome.transaction_outcome?.id ?? "";
-  const status = outcome.status;
-  if (status && typeof status === "object" && "Failure" in status && status.Failure) {
-    throw new TxError(panicMessage(status.Failure), txHash);
-  }
-  const success = typeof status === "object" ? status?.SuccessValue : undefined;
-  let value: unknown = null;
-  if (success) {
-    try {
-      value = JSON.parse(atob(success));
-    } catch {
-      value = null;
-    }
-  }
-  return { txHash, value };
-}
-
-/** `{ActionError: {kind: {FunctionCallError: {ExecutionError: "Smart contract panicked: x"}}}}` → `x`. */
-export function panicMessage(failure: unknown): string {
-  const text = JSON.stringify(failure);
-  const match = text.match(/Smart contract panicked: ([^"\\]+)/);
-  return match ? match[1] : text;
 }

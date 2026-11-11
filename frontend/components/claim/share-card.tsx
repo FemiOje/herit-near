@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { KeyFileLoader } from "@/components/claim/key-file-loader";
 import { SelfieCheckModal } from "@/components/selfie-check/selfie-check-modal";
 import { CountdownRing } from "@/components/estate/countdown-ring";
 import { CardHeading } from "@/components/ui/card-heading";
@@ -16,6 +17,7 @@ import { useHeirAssets } from "@/lib/heir/use-heir";
 import { labelOf } from "@/lib/near/account";
 import { calls } from "@/lib/near/calls";
 import type { HeirView } from "@/lib/near/contracts";
+import type { KeySigner } from "@/lib/near/key-signer";
 import { bpsToPercent, formatNear, formatUnits } from "@/lib/near/format";
 import { useAccountView } from "@/lib/near/use-account";
 import { useWallet } from "@/lib/near/wallet";
@@ -41,22 +43,24 @@ export function ShareCard({ id, heir, status, vault }: { id: string; heir: HeirV
   const shared = lines.filter((l) => l.line && l.line.state !== "none");
   const paid = shared.filter((l) => l.line!.state === "paid").length;
   const named = heir.account_id !== `${heir.label}.${id}`;
-  const controls = accountId === heir.account_id;
+  // A key heir signs with their key file, opened on this card; a named heir with their wallet.
+  const [signer, setSigner] = useState<KeySigner | null>(null);
+  const controls = named ? accountId === heir.account_id : signer !== null;
   const [claiming, setClaiming] = useState(false);
 
   // Sized to what this claim will pay: only unpaid assets with something in them send a transfer.
   const toPay = lines.filter((l) => l.line?.state === "claimable" && l.line.amount > BigInt(0));
   const cost = claimCost(toPay.some((l) => l.info.asset === null) ? 1 : 0, toPay.filter((l) => l.info.asset !== null).length);
-  const signer = useAccountView(heir.account_id);
-  const balance = signer.data ? spendable(signer.data) : undefined;
+  const heirAccount = useAccountView(heir.account_id);
+  const balance = heirAccount.data ? spendable(heirAccount.data) : undefined;
   const shortBy = balance !== undefined && balance < cost.held ? cost.held - balance : BigInt(0);
   const allPaid = shared.length > 0 && paid === shared.length;
   const refusal = !unlocked
     ? "claims open once the estate unlocks"
-    : !named
-      ? "a key heir signs with their key file: that comes in the next step"
-      : !controls
-        ? accountId
+    : !controls
+      ? !named
+        ? "open your key file first"
+        : accountId
           ? `connected as ${accountId}; connect ${heir.account_id}`
           : `connect ${heir.account_id}`
         : !hasSomethingToClaim(lines.flatMap((l) => (l.line ? [l.line] : [])))
@@ -92,7 +96,13 @@ export function ShareCard({ id, heir, status, vault }: { id: string; heir: HeirV
       </ul>
       {!unlocked && vault.length ? <p className="hint mt-2">amounts move with the vault until it unlocks; then they freeze.</p> : null}
 
-      <button type="button" className="btn btn-pill mt-6 w-full" disabled={refusal !== undefined} onClick={() => setClaiming(true)}>
+      {!named && unlocked ? (
+        <div className="mt-6">
+          <KeyFileLoader account={heir.account_id} signer={signer} onChange={setSigner} />
+        </div>
+      ) : null}
+
+      <button type="button" className={`btn btn-pill w-full ${!named && unlocked ? "mt-3" : "mt-6"}`} disabled={refusal !== undefined} onClick={() => setClaiming(true)}>
         <SelfieIcon size={18} />
         selfie check and claim
       </button>
@@ -101,9 +111,17 @@ export function ShareCard({ id, heir, status, vault }: { id: string; heir: HeirV
       <ul className="mt-6 space-y-3 border-t-2 border-ink pt-5">
         <Requirement met={unlocked} label="the estate is unlocked" detail={unlocked ? "the grantor stopped checking in and grace ran out" : "only if the grantor stops checking in and grace runs out"} />
         <Requirement
-          met={named ? controls : false}
+          met={controls}
           label={named ? "signed from your account" : "signed with your key file"}
-          detail={named ? (controls ? `connected as ${accountId}` : `connect ${heir.account_id}`) : `the key made for ${heir.account_id} signs the claim, in this browser`}
+          detail={
+            named
+              ? controls
+                ? `connected as ${accountId}`
+                : `connect ${heir.account_id}`
+              : controls
+                ? `your key for ${heir.account_id} is open; it signs the claim in this browser`
+                : `the key made for ${heir.account_id} signs the claim, in this browser; no wallet needed`
+          }
         />
         <Requirement met={shared.length > 0 && paid < shared.length} label="your share is unclaimed" detail={shared.length === 0 ? "nothing in the vault has a share for you yet" : paid === shared.length ? "every asset has been paid out" : paid ? `${paid} of ${shared.length} assets paid` : "nothing paid out yet"} />
         <Requirement
@@ -125,6 +143,7 @@ export function ShareCard({ id, heir, status, vault }: { id: string; heir: HeirV
         purpose={{ kind: "claim", estateLabel: labelOf(id), heirLabel: heir.label }}
         // Sized when sent, from what is still unpaid by then.
         transaction={(signed) => calls.claim(id, heir.label, signed, cost)}
+        signer={named ? null : signer}
         actionLabel="send the claim"
         successCopy="claimed. your share is on its way to your account; each payout lands in a few seconds."
         onClose={() => setClaiming(false)}

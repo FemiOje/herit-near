@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import type { Call } from "./calls";
+import type { KeySigner } from "./key-signer";
 import { TxError, useWallet, type CallResult } from "./wallet";
 
 export type TxPhase = "idle" | "signing" | "success" | "error";
@@ -16,11 +17,12 @@ export type TxState = {
 };
 
 /**
- * Sends one call through the wallet and tracks it. On success every read is refetched, now and
+ * Sends one call through the wallet (or `signer`, a key heir's key file) and tracks it. On success every read is refetched, now and
  * again a moment later, since an RPC node can trail the one the wallet sent through.
  */
-export function useTx() {
-  const { call, callMany, accountId } = useWallet();
+export function useTx(signer?: KeySigner | null) {
+  const wallet = useWallet();
+  const accountId = signer ? signer.accountId : wallet.accountId;
   const queryClient = useQueryClient();
   const [state, setState] = useState<TxState>({ phase: "idle" });
 
@@ -34,9 +36,12 @@ export function useTx() {
     async (c: Call | readonly Call[]): Promise<CallResult | null> => {
       setState({ phase: "signing" });
       try {
-        const results = Array.isArray(c)
-          ? await callMany(c)
-          : [await call((c as Call).receiverId, (c as Call).method, (c as Call).args, { tgas: (c as Call).tgas, deposit: (c as Call).deposit })];
+        const list: readonly Call[] = Array.isArray(c) ? c : [c as Call];
+        const results = signer
+          ? await sendEach(signer, list)
+          : Array.isArray(c)
+            ? await wallet.callMany(c)
+            : [await wallet.call(list[0].receiverId, list[0].method, list[0].args, { tgas: list[0].tgas, deposit: list[0].deposit })];
         const last = results[results.length - 1];
         setState({ phase: "success", hash: last?.txHash });
         refetch();
@@ -52,13 +57,27 @@ export function useTx() {
         return null;
       }
     },
-    [call, callMany, refetch],
+    [signer, wallet, refetch],
   );
 
   const reset = useCallback(() => setState({ phase: "idle" }), []);
   const busy = state.phase === "signing";
   const blocked = accountId ? undefined : "connect a wallet first";
   return { ...state, send, reset, busy, blocked };
+}
+
+/** A key signer sends one at a time, in order; a failure says how many landed first. */
+async function sendEach(signer: KeySigner, calls: readonly Call[]): Promise<CallResult[]> {
+  const results: CallResult[] = [];
+  for (const c of calls) {
+    try {
+      results.push(await signer.call(c));
+    } catch (error) {
+      if (error instanceof TxError) throw new TxError(error.message, error.txHash, results.length);
+      throw error;
+    }
+  }
+  return results;
 }
 
 /** Wallets reject in many shapes; this keeps the words a person can act on. */

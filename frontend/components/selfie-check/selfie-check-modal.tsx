@@ -11,6 +11,7 @@ import { AlertIcon, CheckIcon, SelfieIcon, ShieldIcon } from "@/components/ui/ic
 import { StageList } from "@/components/ui/stage-list";
 import type { Call, Signed } from "@/lib/near/calls";
 import { nsToMs } from "@/lib/near/format";
+import type { KeySigner } from "@/lib/near/key-signer";
 import { useTx } from "@/lib/near/use-tx";
 import { useWallet } from "@/lib/near/wallet";
 import type { SelfieCheckPurpose, SignResponse } from "@/lib/selfie-check";
@@ -40,6 +41,11 @@ export type SelfieCheckProps = {
   purpose: SelfieCheckPurpose;
   /** The transaction the attestation goes into, or a batch sent under one approval. */
   transaction: (signed: Signed) => Call | Call[];
+  /**
+   * Sends with this key instead of the wallet: a key heir's key file. The attestation then names
+   * the key's account, which is who sends.
+   */
+  signer?: KeySigner | null;
   /** Called once the transaction (or the whole batch) has landed. */
   onDone?: () => void;
   /** What the send button says: "check in", "withdraw 1 NEAR". */
@@ -54,9 +60,10 @@ export function SelfieCheckModal({ open, ...props }: SelfieCheckProps) {
   return <SelfieCheckDialog {...props} />;
 }
 
-function SelfieCheckDialog({ purpose, transaction, actionLabel, successCopy, onClose, onDone }: Omit<SelfieCheckProps, "open">) {
-  const { accountId } = useWallet();
-  const tx = useTx();
+function SelfieCheckDialog({ purpose, transaction, actionLabel, successCopy, onClose, onDone, signer }: Omit<SelfieCheckProps, "open">) {
+  const wallet = useWallet();
+  const accountId = signer ? signer.accountId : wallet.accountId;
+  const tx = useTx(signer);
   const [stage, setStage] = useState(0);
   const [config, setConfig] = useState<SignResponse | null>(null);
   const [signed, setSigned] = useState<Signed | null>(null);
@@ -133,7 +140,9 @@ function SelfieCheckDialog({ purpose, transaction, actionLabel, successCopy, onC
     : sent
       ? successCopy
       : signed
-        ? "send it from your wallet within 15 minutes."
+        ? signer
+          ? "send it with your key file within 15 minutes."
+          : "send it from your wallet within 15 minutes."
         : "proving a live, unique human is behind this request.";
 
   return (
@@ -200,7 +209,7 @@ function SelfieCheckDialog({ purpose, transaction, actionLabel, successCopy, onC
 
           {signed && !sent ? (
             <button type="button" className="btn mt-6 w-full" disabled={tx.busy} onClick={() => void tx.send(transaction(signed)).then((r) => r && onDone?.())}>
-              {tx.busy ? "confirm in your wallet…" : tx.phase === "error" ? `try again: ${actionLabel}` : actionLabel}
+              {tx.busy ? (signer ? "sending…" : "confirm in your wallet…") : tx.phase === "error" ? `try again: ${actionLabel}` : actionLabel}
             </button>
           ) : null}
 

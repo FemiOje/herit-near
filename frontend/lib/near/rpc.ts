@@ -99,3 +99,38 @@ export async function viewAccount(
 function toBase64(text: string): string {
   return btoa(String.fromCharCode(...new TextEncoder().encode(text)));
 }
+
+/** "FullAccess", or a function-call key's limits. */
+export type AccessKeyPermission = "FullAccess" | { FunctionCall: { receiver_id: string; method_names: string[] } };
+
+/** The permission `publicKey` has on `accountId`, or null if it isn't one of its keys (or the account doesn't exist). */
+export async function viewAccessKey(
+  accountId: string,
+  publicKey: string,
+  urls: readonly string[] = RPC_URLS,
+  fetcher: typeof fetch = fetch,
+): Promise<AccessKeyPermission | null> {
+  const body = JSON.stringify({
+    jsonrpc: "2.0",
+    id: "herit",
+    method: "query",
+    params: { request_type: "view_access_key", finality: "optimistic", account_id: accountId, public_key: publicKey },
+  });
+  let lastNetworkError: unknown;
+  for (const url of urls) {
+    let reply: { result?: { permission?: AccessKeyPermission; error?: string }; error?: { cause?: { name?: string }; message?: string } };
+    try {
+      const res = await fetcher(url, { method: "POST", headers: { "Content-Type": "application/json" }, body });
+      if (!res.ok) throw new Error(`${url} answered ${res.status}`);
+      reply = await res.json();
+    } catch (error) {
+      lastNetworkError = error;
+      continue;
+    }
+    const cause = reply.error?.cause?.name;
+    if (cause === "UNKNOWN_ACCESS_KEY" || cause === "UNKNOWN_ACCOUNT" || reply.result?.error) return null;
+    if (reply.error || !reply.result?.permission) throw new ViewError(`${accountId}: ${reply.error?.message ?? "no access key view"}`);
+    return reply.result.permission;
+  }
+  throw new ViewError(`no RPC answered: ${String(lastNetworkError)}`);
+}
