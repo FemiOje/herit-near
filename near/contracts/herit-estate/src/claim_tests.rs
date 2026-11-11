@@ -768,3 +768,72 @@ fn a_token_payout_registers_the_heir_with_the_token_first() {
     );
     assert_eq!(calls[1].0, "ft_transfer");
 }
+
+// ---------- named heirs claim from their own account ----------
+
+/// `funded_estate`, with a named heir `kay` (`kaynearhackathon2.testnet`) in the daughter's place.
+fn estate_with_a_named_heir() -> (Estate, u64) {
+    let mut e = new_estate();
+    add_created_heir(&mut e, "son", 6_000);
+    add_named_heir_at(&mut e, "kay", named_id(2), 4_000, 0);
+    check_in_at(&mut e, CHECKED_IN_AT, 1);
+    deposit_at(
+        &mut e,
+        grantor(),
+        3 * ONE_NEAR.as_yoctonear(),
+        CHECKED_IN_AT,
+    );
+    add_registered_token(&mut e, usdc());
+    ft_deposit_at(&mut e, usdc(), grantor(), 5_000_000, CHECKED_IN_AT);
+    let (_, unlock_at) = e.deadlines_of();
+    (e, unlock_at.0)
+}
+
+fn named_claim_att(nonce: u64, now: u64) -> Att {
+    let mut att = claim_att("kay", DAUGHTER_FACE, nonce, now);
+    att.subject = named_id(2);
+    att
+}
+
+#[test]
+fn a_named_heir_is_paid_into_their_own_account() {
+    let (mut e, unlock_at) = estate_with_a_named_heir();
+    let near_share = e.balance_of(NEAR).0 * 4_000 / 10_000;
+    claim_with(
+        &mut e,
+        "kay",
+        &named_claim_att(10, unlock_at),
+        unlock_at,
+        CLAIM_DEPOSIT,
+    );
+
+    let mut paid = payouts();
+    paid.sort_by_key(|(_, asset, _)| asset.clone());
+    assert_eq!(
+        paid,
+        vec![
+            (named_id(2), NEAR, near_share),
+            (named_id(2), Some(usdc()), 2_000_000),
+        ]
+    );
+}
+
+#[test]
+#[should_panic(expected = "not entitled")]
+fn a_named_heirs_slot_cannot_be_claimed_from_the_sub_account() {
+    let (mut e, unlock_at) = estate_with_a_named_heir();
+    let mut att = named_claim_att(10, unlock_at);
+    att.subject = heir_id("kay"); // the account the label would name, had add_heir made it
+    claim_with(&mut e, "kay", &att, unlock_at, CLAIM_DEPOSIT);
+}
+
+#[test]
+#[should_panic(expected = "invalid signature")]
+fn an_attestation_for_another_account_does_not_work() {
+    let (mut e, unlock_at) = estate_with_a_named_heir();
+    let mut att = named_claim_att(10, unlock_at);
+    att.subject = named_id(3); // signed for someone else, sent by kay
+    set_context_paying(named_id(2), unlock_at, CLAIM_DEPOSIT);
+    let (attestation, signature) = att.sign();
+    e.claim("kay".into(), attestation, signature);
+}

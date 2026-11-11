@@ -1,5 +1,5 @@
-//! Checkpoint 6 fuzz and invariant tests for heirs. Random sequences of add, creation callback,
-//! remove, check-in and time passing, with the heir list compared against a model after each step.
+//! Checkpoint 6 fuzz and invariant tests for heirs. Random sequences of add (as a sub-account or
+//! a named account), creation callback, remove, check-in and time passing, with the heir list compared against a model after each step.
 //! A call that panics is rolled back, as a failed transaction would be on chain.
 
 use std::collections::BTreeMap;
@@ -14,8 +14,29 @@ const LABELS: [&str; 14] = [
     "son", "daughter", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "Bad", "a.b",
 ];
 
+/// Accounts a grantor might name. The first four are fine; the rest are always refused.
+fn accounts() -> [AccountId; 7] {
+    [
+        named_id(1),
+        named_id(2),
+        named_id(3),
+        "son.bob.herit-near.testnet".parse().unwrap(),
+        grantor(),
+        estate_id(),
+        heir_id("son"),
+    ]
+}
+const NAMEABLE: usize = 4;
+
 #[derive(Debug, Clone)]
 enum Op {
+    /// `add_heir_account`: named heirs are confirmed at once.
+    Name {
+        by_grantor: bool,
+        label: usize,
+        account: usize,
+        bps: u16,
+    },
     Add {
         by_grantor: bool,
         label: usize,
@@ -37,6 +58,8 @@ enum Op {
 fn op() -> impl Strategy<Value = Op> {
     let label = 0..LABELS.len();
     prop_oneof![
+        3 => (prop::bool::weighted(0.9), label.clone(), 0..7usize, 0..=4_000u16)
+            .prop_map(|(by_grantor, label, account, bps)| Op::Name { by_grantor, label, account, bps }),
         5 => (prop::bool::weighted(0.9), label.clone(), 0..=4_000u16)
             .prop_map(|(by_grantor, label, bps)| Op::Add { by_grantor, label, bps }),
         4 => (label.clone(), prop::bool::weighted(0.8)).prop_map(|(label, ok)| Op::Created { label, ok }),
@@ -46,8 +69,8 @@ fn op() -> impl Strategy<Value = Op> {
     ]
 }
 
-/// label -> (default_bps, created)
-type Model = BTreeMap<String, (u16, bool)>;
+/// label -> (default_bps, created, account)
+type Model = BTreeMap<String, (u16, bool, AccountId)>;
 
 fn valid_label(l: &str) -> bool {
     !l.is_empty()
@@ -58,15 +81,18 @@ fn valid_label(l: &str) -> bool {
 fn check(e: &Estate, m: &Model) -> Result<(), TestCaseError> {
     let mut seen = BTreeMap::new();
     for h in e.heirs_of() {
-        prop_assert_eq!(
-            &h.account_id,
-            &heir_id(&h.label),
-            "account is <label>.<estate>"
-        );
-        seen.insert(h.label, (h.default_bps, h.created));
+        seen.insert(h.label, (h.default_bps, h.created, h.account_id));
     }
     prop_assert_eq!(&seen, m);
-    let total: u32 = m.values().map(|(bps, _)| *bps as u32).sum();
+    let mut owners: Vec<&AccountId> = m.values().map(|(_, _, a)| a).collect();
+    owners.sort();
+    owners.dedup();
+    prop_assert_eq!(owners.len(), m.len(), "one account, one heir slot");
+    prop_assert!(
+        !owners.contains(&&grantor()),
+        "the grantor is never an heir"
+    );
+    let total: u32 = m.values().map(|(bps, _, _)| *bps as u32).sum();
     prop_assert!(total <= BPS, "shares {} exceed 100%", total);
     prop_assert!(m.len() as u32 <= MAX_HEIRS);
     Ok(())
@@ -81,6 +107,33 @@ fn run(ops: Vec<Op>) -> Result<(), TestCaseError> {
         set_context(stranger(), now);
         let unlocked = e.status_of() == Status::Unlocked;
         match op {
+            Op::Name {
+                by_grantor,
+                label,
+                account,
+                bps,
+            } => {
+                let label = LABELS[label];
+                let named = accounts()[account].clone();
+                let caller = if by_grantor { grantor() } else { stranger() };
+                let ok = call_reverting(&mut e, |e| {
+                    set_context_paying(caller, now, NAMED_HEIR_DEPOSIT);
+                    e.add_heir_account(label.into(), named.clone(), "kin".into(), bps);
+                });
+                let total: u32 = m.values().map(|(b, _, _)| *b as u32).sum();
+                let expected = by_grantor
+                    && !unlocked
+                    && valid_label(label)
+                    && !m.contains_key(label)
+                    && (m.len() as u32) < MAX_HEIRS
+                    && total + bps as u32 <= BPS
+                    && account < NAMEABLE
+                    && !m.values().any(|(_, _, a)| a == &named);
+                prop_assert_eq!(ok, expected, "name {} {} {}", label, named, bps);
+                if ok {
+                    m.insert(label.into(), (bps, true, named));
+                }
+            }
             Op::Add {
                 by_grantor,
                 label,
@@ -92,7 +145,7 @@ fn run(ops: Vec<Op>) -> Result<(), TestCaseError> {
                     set_context_paying(caller, now, HEIR_DEPOSIT);
                     let _ = e.add_heir(label.into(), heir_key(1), "kin".into(), bps);
                 });
-                let total: u32 = m.values().map(|(b, _)| *b as u32).sum();
+                let total: u32 = m.values().map(|(b, _, _)| *b as u32).sum();
                 let expected = by_grantor
                     && !unlocked
                     && valid_label(label)
@@ -101,12 +154,12 @@ fn run(ops: Vec<Op>) -> Result<(), TestCaseError> {
                     && total + bps as u32 <= BPS;
                 prop_assert_eq!(ok, expected, "add {} {}", label, bps);
                 if ok {
-                    m.insert(label.into(), (bps, false));
+                    m.insert(label.into(), (bps, false, heir_id(label)));
                 }
             }
             Op::Created { label, ok } => {
                 let label = LABELS[label];
-                if m.get(label).is_some_and(|(_, created)| !created) {
+                if m.get(label).is_some_and(|(_, created, _)| !created) {
                     set_callback_context(ok);
                     prop_assert_eq!(
                         e.on_heir_created(label.into(), near_sdk::json_types::U128(0)),
@@ -126,7 +179,7 @@ fn run(ops: Vec<Op>) -> Result<(), TestCaseError> {
                     set_context(caller, now);
                     e.remove_heir(label.into());
                 });
-                let expected = by_grantor && !unlocked && m.get(label).is_some_and(|(_, c)| *c);
+                let expected = by_grantor && !unlocked && m.get(label).is_some_and(|(_, c, _)| *c);
                 prop_assert_eq!(ok, expected, "remove {}", label);
                 if ok {
                     m.remove(label);

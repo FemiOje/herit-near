@@ -251,6 +251,26 @@ pub fn add_created_heir(estate: &mut Estate, label: &str, bps: u16) {
     assert!(estate.on_heir_created(label.into(), near_sdk::json_types::U128(0)));
 }
 
+/// An account the heir already has, such as `kaynearhackathon2.testnet`.
+pub fn named_id(n: u8) -> AccountId {
+    format!("kaynearhackathon{n}.testnet").parse().unwrap()
+}
+
+/// What a named heir's record costs: storage only, with room to spare.
+pub const NAMED_HEIR_DEPOSIT: NearToken = NearToken::from_millinear(10);
+
+/// The grantor names `account` as the heir `label` with `bps`, at `now_ns`.
+pub fn add_named_heir_at(
+    estate: &mut Estate,
+    label: &str,
+    account: AccountId,
+    bps: u16,
+    now_ns: u64,
+) {
+    set_context_paying(grantor(), now_ns, NAMED_HEIR_DEPOSIT);
+    estate.add_heir_account(label.into(), account, "son".into(), bps);
+}
+
 // ---------- vault (Checkpoint 7) ----------
 
 pub const ONE_NEAR: near_sdk::NearToken = near_sdk::NearToken::from_near(1);

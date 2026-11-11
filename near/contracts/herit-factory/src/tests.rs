@@ -290,3 +290,36 @@ fn set_attestor_refuses_a_bad_key() {
     set_context(factory_id(), NearToken::from_near(0));
     f.set_attestor("ed25519:abc".into());
 }
+
+#[test]
+fn set_estate_code_changes_the_code_for_new_estates() {
+    let mut f = new_factory();
+    set_context(factory_id(), NearToken::from_near(0));
+    let other = near_sdk::bs58::encode([9u8; 32]).into_string();
+    f.set_estate_code(other.clone());
+    assert_eq!(f.config().estate_code_hash, other);
+    assert!(
+        near_sdk::test_utils::get_logs()
+            .iter()
+            .any(|l| l.contains(r#""event":"estate_code_set""#) && l.contains(&other))
+    );
+    set_context(grantor(), NearToken::from_near(1));
+    let _ = f.open_estate("alice".into(), 600, 300);
+    let used = get_created_receipts()
+        .into_iter()
+        .flat_map(|r| r.actions)
+        .find_map(|a| match a {
+            MockAction::UseGlobalContract { contract_id, .. } => Some(format!("{contract_id:?}")),
+            _ => None,
+        })
+        .expect("use_global_contract");
+    assert!(used.contains(&other), "{used} should name {other}");
+}
+
+#[test]
+#[should_panic(expected = "estate_code_hash must be 32 bytes")]
+fn set_estate_code_refuses_a_bad_hash() {
+    let mut f = new_factory();
+    set_context(factory_id(), NearToken::from_near(0));
+    f.set_estate_code(near_sdk::bs58::encode([9u8; 31]).into_string());
+}

@@ -306,3 +306,173 @@ fn heirs_of_lists_every_heir() {
         vec![("daughter".into(), false), ("son".into(), true)]
     );
 }
+
+// ---------- named heirs: an account the heir already has ----------
+
+#[test]
+fn a_named_heir_is_confirmed_at_once_with_its_credential() {
+    let mut e = new_estate();
+    add_named_heir_at(&mut e, "kay", named_id(2), 5_000, 0);
+
+    assert_eq!(
+        e.heir_of("kay".into()),
+        Some(HeirView {
+            label: "kay".into(),
+            account_id: named_id(2),
+            relationship: "son".into(),
+            default_bps: 5_000,
+            created: true,
+        })
+    );
+    assert_eq!(e.nft_token("kay".into()).unwrap().owner_id, named_id(2));
+    let logs = get_logs();
+    assert!(
+        logs.iter()
+            .any(|l| l.contains(r#""event":"heir_added""#) && l.contains(named_id(2).as_str())),
+        "{logs:?}"
+    );
+    assert!(
+        logs.iter().any(|l| l.contains(r#""event":"nft_mint""#)),
+        "{logs:?}"
+    );
+    // Nothing is created: the only receipt is the grantor's refund.
+    let receipts = get_created_receipts();
+    assert!(
+        receipts.iter().all(|r| r.receiver_id == grantor()),
+        "{receipts:?}"
+    );
+}
+
+#[test]
+fn a_named_heir_costs_storage_only() {
+    let mut e = new_estate();
+    add_named_heir_at(&mut e, "kay", named_id(2), 5_000, 0);
+    let kept = NAMED_HEIR_DEPOSIT.as_yoctonear() - transfers_to(&grantor()).iter().sum::<u128>();
+    assert!(kept > 0);
+    assert!(
+        kept < NearToken::from_millinear(5).as_yoctonear(),
+        "kept {kept}"
+    );
+}
+
+#[test]
+#[should_panic(expected = "attach more NEAR")]
+fn a_named_heir_needs_its_storage_paid() {
+    let mut e = new_estate();
+    set_context(grantor(), 0);
+    e.add_heir_account("kay".into(), named_id(2), "son".into(), 5_000);
+}
+
+#[test]
+fn accounts_that_cannot_be_named_heirs_are_refused() {
+    let estate_sub = heir_id("son");
+    let deep_sub: AccountId = format!("a.b.{}", estate_id()).parse().unwrap();
+    for (account, why) in [
+        (estate_id(), "under this estate"),
+        (estate_sub, "under this estate"),
+        (deep_sub, "under this estate"),
+        (grantor(), "the grantor cannot"),
+    ] {
+        let mut e = new_estate();
+        set_context_paying(grantor(), 0, NAMED_HEIR_DEPOSIT);
+        let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            e.add_heir_account("kay".into(), account.clone(), "son".into(), 5_000)
+        }))
+        .expect_err(&format!("{account} should be refused"));
+        let msg = err
+            .downcast_ref::<String>()
+            .cloned()
+            .or_else(|| err.downcast_ref::<&str>().map(|s| s.to_string()))
+            .unwrap_or_default();
+        assert!(msg.contains(why), "{account}: {msg}");
+    }
+}
+
+#[test]
+fn an_account_on_another_estate_or_a_parent_is_fine() {
+    // Only this estate's own sub-accounts are refused, not lookalikes.
+    for account in [
+        "son.bob.herit-near.testnet",
+        "herit-near.testnet",
+        "xalice.herit-near.testnet",
+    ] {
+        let mut e = new_estate();
+        add_named_heir_at(&mut e, "kay", account.parse().unwrap(), 5_000, 0);
+        assert!(e.heir_of("kay".into()).is_some(), "{account}");
+    }
+}
+
+#[test]
+#[should_panic(expected = "account is already an heir")]
+fn one_account_holds_one_heir_slot() {
+    let mut e = new_estate();
+    add_named_heir_at(&mut e, "kay", named_id(2), 3_000, 0);
+    add_named_heir_at(&mut e, "kay-again", named_id(2), 3_000, 0);
+}
+
+#[test]
+#[should_panic(expected = "not the grantor")]
+fn a_non_grantor_cannot_name_an_heir() {
+    let mut e = new_estate();
+    set_context_paying(stranger(), 0, NAMED_HEIR_DEPOSIT);
+    e.add_heir_account("kay".into(), named_id(2), "son".into(), 5_000);
+}
+
+#[test]
+#[should_panic(expected = "estate unlocked")]
+fn no_heir_can_be_named_once_unlocked() {
+    let mut e = new_estate();
+    check_in_at(&mut e, CHECKED_IN_AT, 1);
+    let (_, unlock_at) = e.deadlines_of();
+    add_named_heir_at(&mut e, "kay", named_id(2), 5_000, unlock_at.0);
+}
+
+#[test]
+fn named_heir_labels_follow_the_sub_account_rules() {
+    for label in ["", "a.b", "Son", "a--b", "-son"] {
+        let mut e = new_estate();
+        let ok = call_reverting(&mut e, |e| {
+            add_named_heir_at(e, label, named_id(2), 5_000, 0)
+        });
+        assert!(!ok, "{label:?} should be refused");
+    }
+}
+
+#[test]
+#[should_panic(expected = "label taken")]
+fn both_kinds_share_one_set_of_labels() {
+    let mut e = new_estate();
+    add_created_heir(&mut e, "son", 1_000);
+    add_named_heir_at(&mut e, "son", named_id(2), 1_000, 0);
+}
+
+#[test]
+#[should_panic(expected = "shares exceed 100%")]
+fn both_kinds_share_one_100_percent() {
+    let mut e = new_estate();
+    add_named_heir_at(&mut e, "kay", named_id(2), 6_000, 0);
+    add_heir_at(&mut e, "son", 4_001, 0);
+}
+
+#[test]
+#[should_panic(expected = "too many heirs")]
+fn both_kinds_share_the_ten_slots() {
+    let mut e = new_estate();
+    for i in 0..MAX_HEIRS as u8 {
+        add_named_heir_at(&mut e, &format!("heir{i}"), named_id(10 + i), 1_000, 0);
+    }
+    add_heir_at(&mut e, "one-more", 0, 0);
+}
+
+#[test]
+fn a_removed_named_heir_frees_its_label_for_either_kind() {
+    let mut e = new_estate();
+    add_named_heir_at(&mut e, "kay", named_id(2), 5_000, 0);
+    set_context(grantor(), 0);
+    e.remove_heir("kay".into());
+    assert!(e.nft_token("kay".into()).is_none());
+    // The account can be named again, and the label can become a sub-account.
+    add_named_heir_at(&mut e, "kay2", named_id(2), 5_000, 0);
+    add_heir_at(&mut e, "kay", 5_000, 0);
+    assert_eq!(e.heir_of("kay".into()).unwrap().account_id, heir_id("kay"));
+}

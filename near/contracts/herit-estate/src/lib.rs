@@ -611,24 +611,8 @@ impl Estate {
         relationship: String,
         default_bps: u16,
     ) -> Promise {
-        self.only_grantor();
-        self.not_unlocked();
         let account_id = heir_account(&label);
-        validate_relationship(&relationship);
-        require!(!self.heirs.contains_key(&label), "label taken");
-        require!(self.heirs.len() < MAX_HEIRS, "too many heirs");
-        require!(
-            self.total_default_bps() + default_bps as u32 <= BPS,
-            "shares exceed 100%"
-        );
-        // The defaults' total doesn't see overrides: an asset with overrides has its own total,
-        // and this heir's default lands on top of it (as in `recordHeir`).
-        for asset in self.override_assets.iter() {
-            require!(
-                self.total_bps(asset) + default_bps as u32 <= BPS,
-                "shares exceed 100%"
-            );
-        }
+        self.check_new_heir(&label, &relationship, default_bps);
 
         let before = env::storage_usage();
         self.heirs.insert(
@@ -653,6 +637,59 @@ impl Estate {
                     .with_static_gas(HEIR_CALLBACK_GAS)
                     .on_heir_created(label, U128(storage_cost + seed)),
             )
+    }
+
+    /// Names an account that already exists, such as `kaynearhackathon2.testnet`, as the heir under
+    /// `label`. Nothing is created: the heir is confirmed (and their credential minted) at once,
+    /// and claims from that account with its own keys. The account can't be this estate, one of
+    /// its sub-accounts (`add_heir` makes those), the grantor, or another heir's.
+    ///
+    /// The estate can't see whether a named account exists; the app checks before sending. Paying
+    /// one that doesn't fails and is credited back, so the heir could claim again once it exists.
+    ///
+    /// Attach NEAR for the heir record's storage; there is no seed, so a named heir pays for their
+    /// claim from their own balance. The surplus is refunded.
+    #[payable]
+    pub fn add_heir_account(
+        &mut self,
+        label: String,
+        account_id: AccountId,
+        relationship: String,
+        default_bps: u16,
+    ) {
+        // Labels follow the sub-account rules whichever way the heir was added, so a freed label
+        // can always go to `add_heir` later.
+        let _ = heir_account(&label);
+        self.check_new_heir(&label, &relationship, default_bps);
+        let estate = env::current_account_id();
+        require!(
+            // Any depth: `is_sub_account_of` only matches direct children.
+            account_id != estate && !account_id.as_str().ends_with(&format!(".{estate}")),
+            "use add_heir for an account under this estate"
+        );
+        require!(account_id != self.grantor, "the grantor cannot be an heir");
+        require!(
+            !self.heirs.values().any(|h| h.account_id == account_id),
+            "account is already an heir"
+        );
+
+        let before = env::storage_usage();
+        self.heirs.insert(
+            label.clone(),
+            Heir {
+                account_id: account_id.clone(),
+                relationship,
+                default_bps,
+                created: true,
+            },
+        );
+        self.heirs.flush(); // so storage_usage() sees the write
+        charge_storage(before, 0);
+        nft::emit_mint(&account_id, &label);
+        log_event(
+            "heir_added",
+            &format!(r#"{{"label":"{label}","account":"{account_id}"}}"#),
+        );
     }
 
     /// Runs after the account creation. On success the heir is confirmed. On failure the seed has
@@ -680,8 +717,9 @@ impl Estate {
         }
     }
 
-    /// Drops an heir before unlock. Their account survives, because this estate holds no key to
-    /// it, so the same label can't be added again: creating the account would fail and roll back.
+    /// Drops an heir before unlock. A sub-account heir's account survives, because this estate
+    /// holds no key to it, so that label can't go to `add_heir` again: creating the account would
+    /// fail and roll back. It can go to `add_heir_account`.
     pub fn remove_heir(&mut self, label: String) {
         self.only_grantor();
         self.not_unlocked();
@@ -818,6 +856,28 @@ impl Estate {
     }
 
     // ---------- internals ----------
+
+    /// What both ways of adding an heir check: the grantor is calling before unlock, and the
+    /// label, relationship, slot and share all fit.
+    fn check_new_heir(&self, label: &str, relationship: &str, default_bps: u16) {
+        self.only_grantor();
+        self.not_unlocked();
+        validate_relationship(relationship);
+        require!(!self.heirs.contains_key(label), "label taken");
+        require!(self.heirs.len() < MAX_HEIRS, "too many heirs");
+        require!(
+            self.total_default_bps() + default_bps as u32 <= BPS,
+            "shares exceed 100%"
+        );
+        // The defaults' total doesn't see overrides: an asset with overrides has its own total,
+        // and this heir's default lands on top of it (as in `recordHeir`).
+        for asset in self.override_assets.iter() {
+            require!(
+                self.total_bps(asset) + default_bps as u32 <= BPS,
+                "shares exceed 100%"
+            );
+        }
+    }
 
     /// Checks an attestation for `action`, signed for this estate and this caller, and burns its
     /// nonce. Returns the commitment (who the human is).

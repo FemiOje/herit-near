@@ -237,6 +237,28 @@ pub async fn add_heir(s: &Setup, label: &str, bps: u16) -> anyhow::Result<Accoun
     Ok(Account::from_secret_key(id, key, &s.worker))
 }
 
+/// The grantor names `heir`, an account that already exists, as `label`. Returns it unchanged.
+pub async fn add_named_heir(
+    s: &Setup,
+    heir: Account,
+    label: &str,
+    bps: u16,
+) -> anyhow::Result<Account> {
+    s.grantor
+        .call(s.estate.id(), "add_heir_account")
+        .args_json(json!({
+            "label": label,
+            "account_id": heir.id(),
+            "relationship": label,
+            "default_bps": bps,
+        }))
+        .deposit(NearToken::from_millinear(10))
+        .transact()
+        .await?
+        .into_result()?;
+    Ok(heir)
+}
+
 /// `heir` claims `label` with `face`, attaching enough for the commitment record.
 pub async fn claim(
     s: &Setup,

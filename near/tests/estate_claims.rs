@@ -191,3 +191,83 @@ async fn both_heirs_are_paid_their_share_of_near_and_tokens() -> anyhow::Result<
     assert!(free_near(&s).await? >= amount_of(&s, "balance_of", json!(null)).await?);
     Ok(())
 }
+
+// ---------- named heirs: an account the heir already has ----------
+
+#[tokio::test]
+async fn a_named_heir_and_a_sub_account_heir_are_both_paid() -> anyhow::Result<()> {
+    let s = setup().await?;
+    let son = add_heir(&s, "son", 6_000).await?;
+    let kay = s.worker.dev_create_account().await?; // stands in for kaynearhackathon2.testnet
+    let kay = add_named_heir(&s, kay, "kay", 4_000).await?;
+
+    // Confirmed at once, with a credential owned by the account itself.
+    let heir: serde_json::Value = s
+        .estate
+        .view("heir_of")
+        .args_json(json!({ "label": "kay" }))
+        .await?
+        .json()?;
+    assert_eq!(heir["account_id"], json!(kay.id()));
+    assert_eq!(heir["created"], json!(true));
+    let token: serde_json::Value = s
+        .estate
+        .view("nft_token")
+        .args_json(json!({ "token_id": "kay" }))
+        .await?
+        .json()?;
+    assert_eq!(token["owner_id"], json!(kay.id()));
+    // The grantor can't name themselves, and the same account can't take a second slot.
+    let me = s
+        .grantor
+        .call(s.estate.id(), "add_heir_account")
+        .args_json(json!({ "label": "me", "account_id": s.grantor.id(), "relationship": "me", "default_bps": 0 }))
+        .deposit(NearToken::from_millinear(10))
+        .transact()
+        .await?;
+    assert!(failure_contains(me, "the grantor cannot"));
+
+    check_in(&s).await?;
+    deposit(&s, NearToken::from_near(3)).await?;
+    let usdc = add_mock_usdc(&s).await?;
+    deposit_token(&s, &usdc, 5_000_000).await?;
+    wait_for_unlock(&s).await?;
+    let near_held = amount_of(&s, "balance_of", json!(null)).await?;
+
+    // The son's account can't claim kay's slot.
+    assert!(failure_contains(
+        claim(&s, &son, "kay", DAUGHTER_FACE, 10).await?,
+        "not entitled"
+    ));
+    let kay_before = s
+        .worker
+        .view_account(kay.id())
+        .await?
+        .balance
+        .as_yoctonear();
+    let transfers: u32 = claim(&s, &kay, "kay", DAUGHTER_FACE, 11)
+        .await?
+        .into_result()?
+        .json()?;
+    assert_eq!(transfers, 2);
+    claim(&s, &son, "son", SON_FACE, 12).await?.into_result()?;
+
+    assert_eq!(ft_balance(&usdc, kay.id()).await?, 2_000_000);
+    assert_eq!(ft_balance(&usdc, son.id()).await?, 3_000_000);
+    s.worker.fast_forward(5).await?;
+    let kay_near = near_held * 4_000 / 10_000;
+    let gain = s
+        .worker
+        .view_account(kay.id())
+        .await?
+        .balance
+        .as_yoctonear() as i128
+        - kay_before as i128;
+    let milli = NearToken::from_millinear(1).as_yoctonear() as i128;
+    // Their share, less the claim's costs, paid from their own balance since they have no seed.
+    assert!(
+        (kay_near as i128 - 80 * milli..kay_near as i128).contains(&gain),
+        "kay gained {gain}"
+    );
+    Ok(())
+}

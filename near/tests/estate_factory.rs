@@ -223,5 +223,11 @@ async fn only_the_factory_runs_its_callback_and_sets_the_attestor() -> anyhow::R
         .transact()
         .await?;
     assert!(failure_contains(attestor, "is private"));
+    let code = stranger
+        .call(f.factory.id(), "set_estate_code")
+        .args_json(json!({ "estate_code_hash": "11111111111111111111111111111111" }))
+        .transact()
+        .await?;
+    assert!(failure_contains(code, "is private"));
     Ok(())
 }

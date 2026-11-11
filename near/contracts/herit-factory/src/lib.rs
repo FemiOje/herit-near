@@ -87,6 +87,17 @@ impl Factory {
         );
     }
 
+    /// Signed by the factory's own key, after the new estate code is published by hash. Only
+    /// estates opened afterwards run it: existing ones keep the code they were built from.
+    #[private]
+    pub fn set_estate_code(&mut self, estate_code_hash: String) {
+        self.estate_code_hash = decode_hash(&estate_code_hash);
+        log_event(
+            "estate_code_set",
+            &format!(r#"{{"estate_code_hash":"{estate_code_hash}"}}"#),
+        );
+    }
+
     /// Opens `<label>.<this factory>` for the caller. Attach at least `MIN_ESTATE_DEPOSIT` plus
     /// `FACTORY_FEE`: the estate gets everything but the fee. If the estate can't be created (the
     /// name is taken, or the timers are out of bounds), the whole deposit comes back.
