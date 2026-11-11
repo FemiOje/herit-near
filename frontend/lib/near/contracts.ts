@@ -50,6 +50,7 @@ export const estate = (id: string) => ({
   deadlinesOf: () => view<[string, string]>(id, "deadlines_of"),
   commitmentOf: () => view<string | null>(id, "commitment_of"),
   heirsOf: () => view<HeirView[]>(id, "heirs_of"),
+  heirOf: (label: string) => view<HeirView | null>(id, "heir_of", { label }),
   tokensOf: () => view<Asset[]>(id, "tokens_of"),
   balanceOf: (asset: Asset) => view<string>(id, "balance_of", { asset }),
   snapshotOf: (asset: Asset) => view<string>(id, "snapshot_of", { asset }),
@@ -59,6 +60,8 @@ export const estate = (id: string) => ({
   claimableAll: (label: string) => view<[Asset, string][]>(id, "claimable_all", { label }),
   hasClaimed: (label: string, asset: Asset) => view<boolean>(id, "has_claimed", { label, asset }),
   nftToken: (label: string) => view<NftToken | null>(id, "nft_token", { token_id: label }),
+  /** The credentials `account` holds here: one per heir slot it has in this estate. */
+  nftTokensForOwner: (account: string) => view<NftToken[]>(id, "nft_tokens_for_owner", { account_id: account }),
 });
 
 // ---------- NEP-141 tokens ----------

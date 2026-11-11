@@ -2,7 +2,7 @@
 
 Part of the [build plan](../near-build-plan.md). Starter notes: [the deployment guide](../near-deployment-guide.md) §9. Design: the Sepolia app on `main` (`frontend/design/DESIGN.md`, now copied here).
 
-**Status:** Parts 1 and 2 done (Part 2 committed 2026-11-11, with named heirs). Part 3 started 2026-11-11
+**Status:** Parts 1 and 2 done (Part 2 committed 2026-11-11, with named heirs). Part 3 in progress: 3a done (2026-11-11), 3b next
 **Who:** built together, in parts. Claude writes each part and walks you through it; you review, and the next part starts after your OK.
 
 ## Goal
@@ -113,6 +113,44 @@ The mock token has no mint. To give a new wallet some, register it and send from
 near contract call-function as-transaction mock-usdc-kaykay.testnet storage_deposit json-args '{"account_id":"<wallet>"}' prepaid-gas '30 Tgas' attached-deposit '0.00125 NEAR' sign-as alice-kaykay.testnet network-config testnet sign-with-keychain send
 near contract call-function as-transaction mock-usdc-kaykay.testnet ft_transfer json-args '{"receiver_id":"<wallet>","amount":"100000000"}' prepaid-gas '30 Tgas' attached-deposit '1 yoctoNEAR' sign-as alice-kaykay.testnet network-config testnet sign-with-keychain send
 ```
+
+## Part 3: The heir's flow
+
+**Decided (2026-11-11):** a named heir signs the claim with their own wallet; a key heir opens the key file they saved, and the app signs and sends the claim in their browser with `near-api-js` (the key never leaves the device). Built in three steps, each reviewed: **3a** finding a slot and the heir view, **3b** the claim, **3c** signing with the key file.
+
+### 3a: Finding a slot, and the heir view
+
+#### Understand first
+
+- **Two ways to find a slot.** A key heir's account is `<label>.<estate>`, so its estate is in its name (`heir_of` confirms it). A named heir can be any account, so every estate the factory opened is asked `nft_tokens_for_owner(account)`, eight at a time, a page of 50 at a time, up to 1,000. That's under a second for testnet's handful of estates; an indexer would replace it at scale. An estate that can't be read is skipped. One account can hold slots in several estates.
+- **Viewing needs no wallet.** Everything on `/claim` is a view call, so anyone can look up any heir account. Signing is 3b and 3c.
+- **Amounts before unlock are estimates.** `claimable_all` is 0 until the estate unlocks. The heir view works out what the contract's `payout_amount` would pay: the balance (or, once taken, the snapshot) times the heir's share of that asset, rounded down. Each asset reads "if it unlocked now", "claimable", "paid", or "no share".
+- **The credential** is the estate's live NEP-171 token: its state (locked → grace → claimable → claimed) and its IPFS image change with the estate.
+
+#### Built
+
+| Item | Where |
+|---|---|
+| Slot discovery, with the chain reads passed in | `lib/heir/slots.ts` |
+| One asset's line: none, expected, claimable, paid | `lib/heir/share.ts` |
+| Hooks: slots for an account; an heir's share, paid mark and snapshot per asset | `lib/heir/use-heir.ts` |
+| `heir_of` and `nft_tokens_for_owner` reads | `lib/near/contracts.ts` |
+| `/claim`: your slots (connected wallet), or look up any account | `app/(app)/claim/page.tsx`, `components/claim/claim-view.tsx` |
+| The heir view: where the estate stands, your share per asset and what a claim needs, your credential, your co-heirs | `components/claim/{unlock-banner,share-card,credential-card,co-heirs-card}.tsx` |
+
+#### Tests
+
+| Kind | Where | What |
+|---|---|---|
+| Unit (7) | `lib/heir/heir.test.ts` | A named heir is found in every estate naming them; a key heir from their name, once; an unreadable estate is skipped; paging stops at the cap; lines before and after unlock, rounded as the contract does; a claim is only worth sending with something claimable |
+| Live | | Through the app's read code: `kaynearhackathon2.testnet` → `kay2` in `kay`; `son.alice.herit-near.testnet` → `son` in `alice`; an unknown account → none |
+| Build | | `tsc`, `eslint`, `next build` |
+
+#### Try it
+
+1. `/claim` with `kaynearhackathon2.testnet` connected (or typed into "look up"): `kay.herit-near.testnet`, heir `kay2`.
+2. `/claim?estate=alice.herit-near.testnet&heir=son`: unlocked, both assets paid, credential `claimed`.
+3. `/claim?estate=kay.herit-near.testnet&heir=kay2`: sealed, clock not started; no vault yet.
 
 ## Check
 
