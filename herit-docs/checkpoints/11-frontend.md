@@ -2,7 +2,7 @@
 
 Part of the [build plan](../near-build-plan.md). Starter notes: [the deployment guide](../near-deployment-guide.md) §9. Design: the Sepolia app on `main` (`frontend/design/DESIGN.md`, now copied here).
 
-**Status:** Parts 1–3 done (Part 3 committed 2026-11-11). Part 4 in progress
+**Status:** Parts 1–3 done; Part 4: 4a and 4b done (2026-11-11), 4c (the Vercel deploy) is yours
 **Who:** built together, in parts. Claude writes each part and walks you through it; you review, and the next part starts after your OK.
 
 ## Goal
@@ -269,6 +269,20 @@ Built in three steps: **4a** the landing page and the estate explorer, **4b** th
 | Unit (3) | `lib/activity/activity.test.ts` | Only the estate's own `herit` events count, newest first and in logged order (not the factory's, not NEP-171's, not plain logs); failed receipts are skipped; every event reads as a sentence |
 | Live | | Through the dev server: `keytest` gives its 10 real events, opening to claim, without the failed second claim; `alice` gives its whole smoke-run life (19 events, every kind it logged); an estate outside the factory gets 400 |
 | Build | | `tsc`, `eslint`, `next build` |
+
+### 4c: The Vercel deploy (yours)
+
+You deploy it yourself. What it needs:
+
+| Setting | Value |
+|---|---|
+| Repository and branch | `FemiOje/herit-near`, branch `kaykay` (`main` still has the Sepolia app) |
+| Root directory | `frontend` |
+| Framework | Next.js (detected); build `next build` |
+| Public env vars | `NEXT_PUBLIC_NEAR_NETWORK=testnet`, `NEXT_PUBLIC_HERIT_FACTORY=herit-near.testnet` (both are also the defaults) |
+| Server secrets, copied from your `frontend/.env.local` | `WORLD_APP_ID`, `WORLD_RP_ID`, `WORLD_SIGNING_KEY`, `WORLD_ENVIRONMENT`, `ATTESTOR_SECRET_KEY`, `COMMITMENT_SALT` |
+
+Checks once it's up: the explorer on `/` lists the estates; `/api/activity?estate=keytest.herit-near.testnet` returns events; a wallet connects; a Selfie Check reaches "send" (that proves the World and attestor secrets).
 
 ## Check
 
