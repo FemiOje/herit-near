@@ -163,7 +163,7 @@ Estates opened before this, such as `alice.herit-near.testnet`, keep the code th
 | `alice-kaykay.testnet` opens `kay.herit-near.testnet` (runs `65rC6sBJ…`) | | [`Hrgry7oi…`](https://testnet.nearblocks.io/txns/Hrgry7oimM2psw4y8FChWup29RUdLd6owDp4kYdBBcTg) |
 | …and names `kaynearhackathon2.testnet` as heir `kay2` (50%): `nft_mint`, `heir_added`, `created: true` | | [`6VYrFn9A…`](https://testnet.nearblocks.io/txns/6VYrFn9AfLFREkQ4GNZfa3rWPtQm6PsikfZ3YraUrUzJ) |
 
-Tested first: 181 unit tests (16 new, plus named heirs in the heir invariants), 17 factory unit tests (2 new), and all 38 sandbox tests on the reproducible wasm, among them a named heir and a sub-account heir both paid NEAR and mUSDC. Cost: about 30.7 NEAR burned by the publish. Left: publisher 1.83 NEAR, factory 10.02 NEAR.
+Tested first: 181 unit tests (16 new, plus named heirs in the heir invariants), 15 factory unit tests (2 new), and all 38 sandbox tests on the reproducible wasm, among them a named heir and a sub-account heir both paid NEAR and mUSDC. Cost: about 30.7 NEAR burned by the publish. Left: publisher 1.83 NEAR, factory 10.02 NEAR.
 
 ## Checked afterwards
 
