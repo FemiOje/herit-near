@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 
+import { CredentialImage, STATE_TONE, describeCounts, useEstateCredentials } from "@/components/credential/credential-art";
 import { StatusPill } from "@/components/estate/status-pill";
 import { heirColor } from "@/components/heirs/heirs-card";
 import { Blob, Star } from "@/components/ui/deco";
@@ -14,7 +15,7 @@ import { isSetUp } from "@/lib/estate/setup-plan";
 import { useEstate } from "@/lib/estate/use-estate";
 import { useNewestEstates } from "@/lib/estate/use-explorer";
 import { accountUrl } from "@/lib/near/config";
-import type { EstateEntry } from "@/lib/near/contracts";
+import { credentialState, type EstateEntry } from "@/lib/near/contracts";
 import { bpsToPercent, formatNear, nsToMs } from "@/lib/near/format";
 
 const PAGE = 10;
@@ -79,6 +80,8 @@ function Row({ entry }: { entry: EstateEntry }) {
   const id = entry.account_id;
   const [open, setOpen] = useState(false);
   const { header, status, heirs, vault } = useEstate(id);
+  const credentials = useEstateCredentials(id);
+  const tokenOf = (label: string) => credentials.tokens.data?.find((t) => t.token_id === label) ?? null;
   const near = vault.find((v) => v.info.asset === null)?.balance;
   const tokens = vault.filter((v) => v.info.asset !== null && (v.balance ?? BigInt(0)) > BigInt(0)).length;
   const live = header.data && heirs.data ? isSetUp({ exists: true, faceBound: header.data.faceBound, heirs: heirs.data.map((h) => h.label) }) : null;
@@ -87,9 +90,20 @@ function Row({ entry }: { entry: EstateEntry }) {
   return (
     <li>
       <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className={`grid w-full grid-cols-2 items-center gap-x-4 gap-y-3 px-5 py-4 text-left hover:bg-cream ${COLUMNS}`}>
-        <span className="col-span-2 min-w-0 lg:col-span-1">
-          <span className="mono block truncate font-bold">{id}</span>
-          <span className="block truncate text-[0.7rem] text-muted">by {entry.grantor} · opened {formatStamp(nsToMs(entry.opened_at_ns))}</span>
+        <span className="col-span-2 flex min-w-0 items-center gap-3 lg:col-span-1">
+          <span title={credentials.summary ? `heir credentials (NFTs): ${describeCounts(credentials.summary.counts)}` : "no heir credentials yet"}>
+            {credentials.summary ? (
+              <CredentialImage media={credentials.summary.media} state={credentials.summary.state} size={40} />
+            ) : (
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px] border-2 border-dashed border-ink/40 text-[0.6rem] text-muted">
+                {credentials.tokens.isPending ? "…" : "none"}
+              </span>
+            )}
+          </span>
+          <span className="min-w-0">
+            <span className="mono block truncate font-bold">{id}</span>
+            <span className="block truncate text-[0.7rem] text-muted">by {entry.grantor} · opened {formatStamp(nsToMs(entry.opened_at_ns))}</span>
+          </span>
         </span>
         <span>{live === false ? <span className="tag bg-yellow">setup unfinished</span> : status.data ? <StatusPill status={status.data} size="sm" /> : "…"}</span>
         <Cell caption="unlocks" value={live === false ? "—" : status.data === "unlocked" ? "unlocked" : unlock ? formatStamp(unlock) : "clock not started"} />
@@ -100,17 +114,26 @@ function Row({ entry }: { entry: EstateEntry }) {
       {open ? (
         <div className="space-y-2 border-t-2 border-dashed border-ink/30 bg-cream/50 px-5 py-4">
           {heirs.data?.length ? (
-            heirs.data.map((h, i) => (
+            heirs.data.map((h, i) => {
+              const token = tokenOf(h.label);
+              const state = credentialState(token);
+              return (
               <Link key={h.label} href={`/claim?estate=${encodeURIComponent(id)}&heir=${encodeURIComponent(h.label)}`} className="flex items-center gap-3 rounded-[8px] border-2 border-ink bg-surface px-3 py-2 hover:bg-cream">
-                <IconCircle size="sm" accent={heirColor(i)}><HeirIcon size={14} /></IconCircle>
+                {token ? (
+                  <CredentialImage media={token.metadata?.media ?? null} state={state} size={32} />
+                ) : (
+                  <IconCircle size="sm" accent={heirColor(i)}><HeirIcon size={14} /></IconCircle>
+                )}
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-bold">{h.relationship || h.label}</span>
                   <span className="mono block truncate text-[0.7rem] text-muted">{h.account_id}</span>
                 </span>
+                {state ? <span className={`tag hidden sm:inline-flex ${STATE_TONE[state]}`}>credential: {state}</span> : null}
                 <span className="tag">{bpsToPercent(h.default_bps)}</span>
                 <span className="text-xs font-bold underline">heir view</span>
               </Link>
-            ))
+              );
+            })
           ) : (
             <p className="text-sm text-muted">no heirs named yet.</p>
           )}

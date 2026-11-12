@@ -60,6 +60,8 @@ export const estate = (id: string) => ({
   claimableAll: (label: string) => view<[Asset, string][]>(id, "claimable_all", { label }),
   hasClaimed: (label: string, asset: Asset) => view<boolean>(id, "has_claimed", { label, asset }),
   nftToken: (label: string) => view<NftToken | null>(id, "nft_token", { token_id: label }),
+  /** Every heir's credential: at most MAX_HEIRS (10), so one page holds them all. */
+  nftTokens: () => view<NftToken[]>(id, "nft_tokens", { from_index: "0", limit: 10 }),
   /** The credentials `account` holds here: one per heir slot it has in this estate. */
   nftTokensForOwner: (account: string) => view<NftToken[]>(id, "nft_tokens_for_owner", { account_id: account }),
 });
@@ -75,6 +77,27 @@ export const ft = (token: string) => ({
   storageBalanceOf: (accountId: string) =>
     view<{ total: string } | null>(token, "storage_balance_of", { account_id: accountId }),
 });
+
+/**
+ * One picture for a whole estate's credentials. Unclaimed credentials all share the estate's state
+ * (locked, grace or claimable), so the first unclaimed one stands for them; once every heir has
+ * claimed, it's `claimed`. `counts` is for the tooltip. Null when there are no credentials yet.
+ */
+export function estateCredential(tokens: readonly NftToken[]): { state: CredentialState; media: string | null; counts: Partial<Record<CredentialState, number>> } | null {
+  const counts: Partial<Record<CredentialState, number>> = {};
+  let shown: NftToken | null = null;
+  let shownState: CredentialState | null = null;
+  for (const token of tokens) {
+    const state = credentialState(token);
+    if (!state) continue;
+    counts[state] = (counts[state] ?? 0) + 1;
+    if (!shownState || (shownState === "claimed" && state !== "claimed")) {
+      shown = token;
+      shownState = state;
+    }
+  }
+  return shownState ? { state: shownState, media: shown?.metadata?.media ?? null, counts } : null;
+}
 
 /** The credential's state, from its `extra` JSON. */
 export function credentialState(token: NftToken | null): CredentialState | null {

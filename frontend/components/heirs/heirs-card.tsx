@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 
+import { CredentialImage, STATE_TONE, useCredential } from "@/components/credential/credential-art";
 import { TxStatus } from "@/components/estate/tx-status";
 import { EMPTY_ACCOUNT, EMPTY_KEY, HeirTargetInput, useTargetProblem } from "@/components/heirs/heir-target";
 import { CardHeading } from "@/components/ui/card-heading";
@@ -57,6 +58,11 @@ export function HeirsCard({
       </div>
 
       <ShareBar heirs={heirs} />
+
+      <p className="mt-3 text-xs text-muted">
+        each heir holds a soulbound NFT on their account, their heir credential. it reads <strong className="text-ink">locked</strong> while you check in and
+        turns <strong className="text-ink">claimable</strong> if you stop. it can&apos;t be sold or moved, and any NEAR wallet or explorer shows it.
+      </p>
 
       {heirs.length === 0 ? (
         <p className="mt-4 text-sm text-muted">no heirs yet. name a NEAR account the heir already has, or give them a new one under this estate from a key only they hold.</p>
@@ -117,6 +123,7 @@ function HeirRow({
   writable: boolean;
 }) {
   const tx = useTx();
+  const credential = useCredential(id, heir.label, heir.created);
   // A key heir's account is `<label>.<estate>` and outlives removal, so its label can't be reused.
   const subAccount = heir.account_id === `${heir.label}.${id}`;
   // Assets where this heir's share differs from their default: an override.
@@ -128,12 +135,21 @@ function HeirRow({
   return (
     <li className="rounded-[8px] border-2 border-ink p-3">
       <div className="flex items-center gap-3">
-        <IconCircle size="lg" accent={heirColor(index)}>
-          <HeirIcon size={16} />
-        </IconCircle>
+        {heir.created ? (
+          <CredentialImage media={credential.media} state={credential.state} size={44} pending={credential.token.isPending} />
+        ) : (
+          <IconCircle size="lg" accent={heirColor(index)}>
+            <HeirIcon size={16} />
+          </IconCircle>
+        )}
         <div className="min-w-0 flex-1">
           <p className="font-bold">
             {heir.relationship || heir.label} <span className="text-sm font-medium text-muted">· {bpsToPercent(heir.default_bps)}</span>
+            {credential.state ? (
+              <span className={`tag ml-2 align-middle text-[0.62rem] ${STATE_TONE[credential.state]}`} title="their heir credential, a soulbound NFT">
+                credential: {credential.state}
+              </span>
+            ) : null}
           </p>
           <a href={accountUrl(heir.account_id)} target="_blank" rel="noreferrer" className="mono block truncate text-[0.72rem] underline decoration-1 underline-offset-2">
             {heir.account_id}
@@ -224,7 +240,7 @@ function AddHeirForm({ id, heirs, totalBps }: { id: string; heirs: readonly Heir
         {tx.busy ? "confirm in your wallet…" : named ? "add heir · 0.01 NEAR" : "add heir · 0.2 NEAR"}
       </button>
       {problem && problem !== targetProblem ? <p className="hint">{problem}</p> : null}
-      <TxStatus tx={tx} success={named ? "heir added: their credential is on their account now" : "heir added: their account and credential exist now"} />
+      <TxStatus tx={tx} success={named ? "heir added: their credential NFT is on their account now" : "heir added: their account and credential NFT exist now"} />
     </div>
   );
 }

@@ -28,3 +28,10 @@ export const accountUrl = (id: string) => `${EXPLORER}/address/${id}`;
 
 /** Where the heir credential images are fetched from (the estate's NEP-171 `base_uri`). */
 export const IPFS_GATEWAY = "https://gateway.pinata.cloud/ipfs";
+
+/**
+ * The image every heir's credential shows while it's `locked`: the same CID the estate contract
+ * returns as `media` (`CREDENTIAL_IMAGES` in near/contracts/herit-estate/src/nft.rs), so the setup
+ * wizard can show what an heir will get before the estate exists. `credential.test.ts` keeps the two equal.
+ */
+export const LOCKED_CREDENTIAL_CID = "bafkreibqatv5ibnvmkutd3mt3nf3fhwp5ricnatupszbum3yrwkg6pi2k4";

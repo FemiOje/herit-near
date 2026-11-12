@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
+import { CredentialImage, describeCounts, useEstateCredentials } from "@/components/credential/credential-art";
 import { StatusPill } from "@/components/estate/status-pill";
 import { PlusIcon } from "@/components/ui/icons";
 import { FACTORY } from "@/lib/near/config";
@@ -89,12 +90,20 @@ function EstateList({ grantor, children }: { grantor: string; children: (id: str
 function EstateCard({ id, href, selected }: { id: string; href: string; selected: boolean }) {
   const status = useQuery({ queryKey: ["status_of_raw", id], queryFn: () => estate(id).statusOf() });
   const deadlines = useQuery({ queryKey: ["deadlines_of", id], queryFn: () => estate(id).deadlinesOf() });
+  const credentials = useEstateCredentials(id);
   const unlockAt = deadlines.data && deadlines.data[1] !== "0" ? new Date(nsToMs(deadlines.data[1])) : null;
 
   return (
     <Link href={href} scroll={false} className={`card card-lift block p-5 ${selected ? "bg-yellow" : ""}`} aria-current={selected ? "true" : undefined}>
       <div className="flex items-start justify-between gap-3">
-        <span className="mono break-all font-bold">{id}</span>
+        <span className="flex min-w-0 items-center gap-3">
+          {credentials.summary ? (
+            <span title={`heir credentials (NFTs): ${describeCounts(credentials.summary.counts)}`}>
+              <CredentialImage media={credentials.summary.media} state={credentials.summary.state} size={36} />
+            </span>
+          ) : null}
+          <span className="mono break-all font-bold">{id}</span>
+        </span>
         {status.data ? <StatusPill status={fromContract(status.data)} size="sm" /> : null}
       </div>
       <p className="mt-3 text-sm text-muted">

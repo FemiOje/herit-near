@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { TxStatus } from "@/components/estate/tx-status";
+import { CredentialImage } from "@/components/credential/credential-art";
 import { EMPTY_ACCOUNT, EMPTY_KEY, HeirTargetInput, useTargetProblem } from "@/components/heirs/heir-target";
 import { SelfieCheckModal } from "@/components/selfie-check/selfie-check-modal";
 import { CardHeading } from "@/components/ui/card-heading";
@@ -15,7 +16,7 @@ import { NOTHING_YET, OPENING_DEPOSIT, isNamed, setupPlan, setupProblems, vaultD
 import { useSetupDraft, useSetupProgress } from "@/lib/estate/use-setup";
 import { estateId, isLabel, labelOf } from "@/lib/near/account";
 import { supportsNamedHeirs } from "@/lib/near/calls";
-import { FACTORY } from "@/lib/near/config";
+import { FACTORY, LOCKED_CREDENTIAL_CID } from "@/lib/near/config";
 import { BPS, bpsToPercent, formatNear } from "@/lib/near/format";
 import { useAccountView } from "@/lib/near/use-account";
 import { useTx } from "@/lib/near/use-tx";
@@ -179,6 +180,14 @@ function HeirsStep({ draft, added, estate, grantor, onChange }: { draft: SetupDr
     <div className="space-y-5">
       <CardHeading icon={HeirIcon} accent="bg-pink" title="who inherits" body="name a NEAR account the heir already has, or give them a new one under the estate from a key only they hold. at least one." />
 
+      <div className="flex items-center gap-4 rounded-[8px] border-2 border-ink bg-cream p-3">
+        <CredentialImage media={LOCKED_CREDENTIAL_CID} state="locked" size={64} />
+        <p className="text-xs">
+          <strong>each heir gets a soulbound NFT, their heir credential.</strong> it lands on their account when you add them and shows in any NEAR wallet. it reads{" "}
+          <strong>locked</strong> while you check in, and turns <strong>claimable</strong> if you stop: that&apos;s their right to claim. it can&apos;t be sold or moved.
+        </p>
+      </div>
+
       {draft.heirs.length ? (
         <ul className="space-y-2">
           {draft.heirs.map((h) => {
@@ -266,13 +275,14 @@ function ReviewStep({ draft, problems, progress, onDone }: { draft: SetupDraft; 
         <DataRow label="estate" value={id || "—"} />
         <DataRow label="clock" value={`${formatDuration(draft.intervalSec)} + ${formatDuration(draft.graceSec)} grace`} />
         <DataRow label="heirs" value={draft.heirs.map((h) => `${h.label} ${bpsToPercent(h.bps)}`).join(", ") || "—"} />
+        <DataRow label="credentials" value={draft.heirs.length ? `${draft.heirs.length} soulbound NFT${draft.heirs.length === 1 ? "" : "s"}, one per heir` : "—"} />
         <DataRow label="vault" value={deposit > BigInt(0) ? `${formatNear(deposit)} NEAR` : "later"} />
       </dl>
 
       <ol className="space-y-1.5 text-sm">
         <Todo done={p.exists} text="open the estate" />
         <Todo done={p.faceBound} text="first check-in: your Selfie Check binds your face" />
-        {draft.heirs.map((h) => <Todo key={h.label} done={p.heirs.includes(h.label)} text={`add ${h.label} (${bpsToPercent(h.bps)})`} />)}
+        {draft.heirs.map((h) => <Todo key={h.label} done={p.heirs.includes(h.label)} text={`add ${h.label} (${bpsToPercent(h.bps)}) and give them their credential NFT`} />)}
         {deposit > BigInt(0) ? <Todo done={p.vaultNear > BigInt(0)} text={`deposit ${formatNear(deposit)} NEAR`} /> : null}
       </ol>
 
@@ -303,7 +313,7 @@ function ReviewStep({ draft, problems, progress, onDone }: { draft: SetupDraft; 
         // Worked out when the button is pressed, from what's on chain by then.
         transaction={(signed) => setupPlan(FACTORY, draft, p, signed)}
         actionLabel="approve the setup in your wallet"
-        successCopy="your estate is live: face bound, clock running, heirs added."
+        successCopy="your estate is live: face bound, clock running, and each heir holds their credential NFT."
         onDone={finish}
         onClose={() => setChecking(false)}
       />
