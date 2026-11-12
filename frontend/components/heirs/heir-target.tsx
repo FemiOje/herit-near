@@ -76,7 +76,7 @@ export function HeirTargetInput({ value, onChange, ctx, problem }: { value: Heir
 
       {named ? (
         <>
-          <input className="input mono" value={value.accountId} onChange={(e) => onChange({ kind: "account", accountId: e.target.value.toLowerCase().trim() })} placeholder="kay.testnet" aria-label="the heir's NEAR account" autoComplete="off" />
+          <input className="input mono" value={value.accountId} onChange={(e) => onChange({ kind: "account", accountId: e.target.value.toLowerCase().trim() })} placeholder="their-account.testnet" aria-label="the heir's NEAR account" autoComplete="off" />
           <p className="hint">
             {problem && value.accountId ? problem : "they claim from this account with their own wallet. costs 0.01 NEAR for the record; they pay their claim's gas themselves."}
           </p>

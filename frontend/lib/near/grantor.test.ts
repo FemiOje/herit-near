@@ -124,5 +124,5 @@ test("implicit accounts needn't exist before they're named", async () => {
   const { isImplicitAccount } = await import("./account.ts");
   assert.ok(isImplicitAccount("a".repeat(64)));
   assert.ok(isImplicitAccount(`0x${"b".repeat(40)}`));
-  assert.ok(!isImplicitAccount("kay.testnet"));
+  assert.ok(!isImplicitAccount("their-account.testnet"));
 });

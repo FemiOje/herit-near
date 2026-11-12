@@ -90,7 +90,7 @@ test("a named heir can't be the grantor, under the estate, or named twice", () =
   assert.match(problems([named("me", "alice-kaykay.testnet")]), /your own heir/);
   assert.match(problems([named("x", "son.alice.herit-near.testnet")]), /under this estate/);
   assert.match(problems([named("x", "alice.herit-near.testnet")]), /under this estate/);
-  assert.match(problems([named("a", "kay.testnet"), named("b", "kay.testnet")]), /already an heir/);
+  assert.match(problems([named("a", "their-account.testnet"), named("b", "their-account.testnet")]), /already an heir/);
   assert.match(problems([named("a", "Not An Account")]), /a NEAR account/);
   // Another estate's sub-account is someone else's account: fine.
   assert.equal(problems([named("a", "son.bob.herit-near.testnet")]), "");

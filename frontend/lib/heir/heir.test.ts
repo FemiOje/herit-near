@@ -34,8 +34,8 @@ function chain(estates: Record<string, Record<string, string>>, broken: string[]
 }
 
 test("a named heir is found in every estate that named them", async () => {
-  const r = chain({ alice: { kay: "kay.testnet", son: "son.alice.herit-near.testnet" }, bob: { friend: "kay.testnet" }, carol: {} });
-  const slots = await findSlots("kay.testnet", F, r, { pageSize: 2 });
+  const r = chain({ alice: { kay: "their-account.testnet", son: "son.alice.herit-near.testnet" }, bob: { friend: "their-account.testnet" }, carol: {} });
+  const slots = await findSlots("their-account.testnet", F, r, { pageSize: 2 });
   assert.deepEqual(slots.map((s) => `${s.estate} ${s.label}`).sort(), ["alice.herit-near.testnet kay", "bob.herit-near.testnet friend"]);
 });
 
@@ -47,15 +47,15 @@ test("a key heir is found from their account's name, once", async () => {
 });
 
 test("an unreadable estate is skipped, and nobody's heir finds nothing", async () => {
-  const r = chain({ alice: { kay: "kay.testnet" }, broken: {}, bob: { kay2: "kay.testnet" } }, ["broken"]);
-  assert.equal((await findSlots("kay.testnet", F, r)).length, 2);
+  const r = chain({ alice: { kay: "their-account.testnet" }, broken: {}, bob: { kay2: "their-account.testnet" } }, ["broken"]);
+  assert.equal((await findSlots("their-account.testnet", F, r)).length, 2);
   assert.deepEqual(await findSlots("nobody.testnet", F, r), []);
 });
 
 test("estates are read a page at a time, up to the cap", async () => {
   const many = Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`e${i}`, {}]));
   const r = chain(many);
-  await findSlots("kay.testnet", F, r, { pageSize: 10, maxEstates: 20 });
+  await findSlots("their-account.testnet", F, r, { pageSize: 10, maxEstates: 20 });
   assert.equal(r.calls, 20);
 });
 

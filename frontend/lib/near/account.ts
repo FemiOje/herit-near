@@ -46,7 +46,7 @@ export function labelOf(accountId: string): string {
  * separately, against the chain.
  */
 export function namedHeirProblem(account: string, estate: string | null, grantor: string | null, taken: readonly string[]): string | undefined {
-  if (!isAccountId(account)) return "a NEAR account, such as kay.testnet";
+  if (!isAccountId(account)) return "a NEAR account, such as their-account.testnet";
   if (estate !== null && (account === estate || account.endsWith(`.${estate}`))) return "that account is under this estate; use a key instead";
   if (grantor !== null && account === grantor) return "you can't be your own heir";
   if (taken.includes(account)) return "that account is already an heir";
