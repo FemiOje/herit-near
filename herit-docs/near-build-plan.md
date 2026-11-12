@@ -36,6 +36,9 @@ Deadline: **2026-11-14 23:59 UTC**. Aim to submit by 12:00 UTC.
 - [x] 8: [Claims](checkpoints/08-claims.md) (built together in parts: Claude wrote, you reviewed)
 - [x] 9: [The heir credential](checkpoints/09-heir-credential.md) (built together in parts: Claude wrote, you reviewed; you pinned the images)
 - [x] 10: [The factory and the testnet deploy](checkpoints/10-factory-testnet.md) (built together in parts; you signed off the publish): live on testnet, smoke run linked
+- [ ] 11: [The frontend](checkpoints/11-frontend.md) (built together in parts): Parts 1–4b done; 4c, the Vercel deploy, is yours
+- [ ] 12: Reminders, email and web push (roadmap Phase 1; guide written once 11 is done)
+- [ ] 13: Multi-asset and multi-chain vaults: NFTs, LP shares, BTC/ETH/SOL through Intents (roadmap Phase 2; guide written once 12 is done)
 
 ---
 
@@ -68,4 +71,7 @@ Checked in the repo on 2026-11-09:
 | Attestor | Testnet: the Next.js route `POST /api/attest` verifies the Selfie Check with World and signs with a local key from `.env.local`, as the Sepolia app did (decided 2026-11-10, Checkpoint 5 fallback). Mainnet: the OutLayer worker in `near/attestor-worker/`, built and tested, so nobody holds the key. Same rules in both, and the contract doesn't change |
 | World environment | `sandbox`, with the World sandbox testing app on an iPhone; it supports Selfie Check |
 | Tracks | `nfts`, `realworld`, `open` |
-| BTC, ETH, SOL | A stretch checkpoint, taken only once the core estate works on testnet. The estate holds them as NEAR Intents balances and pays them out in the heirs' split (guide §2.3 item 6). Mainnet only, with tiny amounts. Not Chain Signatures. First to cut |
+| BTC, ETH, SOL | A stretch checkpoint, taken only once the core estate works on testnet. The estate holds them as NEAR Intents balances and pays them out in the heirs' split (guide §2.3 item 6). Mainnet only, with tiny amounts. Not Chain Signatures. First to cut. Now part of Checkpoint 13 (decided 2026-11-11) |
+| Roadmap features (2026-11-11) | From herit-psi.vercel.app/roadmap, two are taken: reminders (Checkpoint 12), then multi-asset and multi-chain vaults (Checkpoint 13). Reminders before vaults, because they need no contract change |
+| Reminders | Email and browser push. A scheduled job reads each estate's `deadlines_of` and only sends notices; the contract alone decides unlocks, so a missed reminder never causes one. World App notifications wait for a MiniKit mini app shell, a later checkpoint |
+| NFTs in an estate | The grantor assigns each NFT to one heir. An NFT with no assigned heir goes to the heir with the largest share |
