@@ -48,19 +48,6 @@ export function Hero() {
             </Link>
           </div>
 
-          {/* Selfie Check is access-gated by World, so the flow fails for anyone without sandbox access. */}
-          <span className="mt-5 block max-w-lg rounded-[10px] border-2 border-dashed border-coral px-4 py-3 text-xs leading-relaxed text-muted">
-            heads up: on testnet the Selfie Check runs in World&apos;s <strong className="text-ink">sandbox</strong>, which World
-            grants per account.{" "}
-            <a href="https://docs.world.org/world-id/sandbox/sandbox-access" target="_blank" rel="noopener noreferrer" className="font-medium text-ink underline underline-offset-2">
-              how to get sandbox access
-            </a>{" "}
-            ·{" "}
-            <a href="https://docs.world.org/world-id/sandbox/testing-selfie-check" target="_blank" rel="noopener noreferrer" className="font-medium text-ink underline underline-offset-2">
-              testing Selfie Check
-            </a>
-          </span>
-
           <ul className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm font-medium sm:mt-9">
             {HERO_TRUST_POINTS.map((point) => (
               <li key={point} className="flex items-center gap-2">
