@@ -18,6 +18,7 @@ import { labelOf } from "@/lib/near/account";
 import { calls } from "@/lib/near/calls";
 import type { HeirView } from "@/lib/near/contracts";
 import type { KeySigner } from "@/lib/near/key-signer";
+import { FAUCET_URL } from "@/lib/near/config";
 import { bpsToPercent, formatNear, formatUnits } from "@/lib/near/format";
 import { useAccountView } from "@/lib/near/use-account";
 import { useWallet } from "@/lib/near/wallet";
@@ -55,6 +56,7 @@ export function ShareCard({ id, heir, status, vault }: { id: string; heir: HeirV
   const balance = heirAccount.data ? spendable(heirAccount.data) : undefined;
   const shortBy = balance !== undefined && balance < cost.held ? cost.held - balance : BigInt(0);
   const allPaid = shared.length > 0 && paid === shared.length;
+  const gasRefusal = shortBy > BigInt(0) ? `${heir.account_id} needs ${formatNear(shortBy)} more NEAR for gas` : undefined;
   const refusal = !unlocked
     ? "claims open once the estate unlocks"
     : !controls
@@ -67,9 +69,9 @@ export function ShareCard({ id, heir, status, vault }: { id: string; heir: HeirV
           ? allPaid
             ? "your share has been paid out"
             : "there is nothing to claim yet"
-          : shortBy > BigInt(0)
-            ? `send ${heir.account_id} ${formatNear(shortBy)} NEAR first: see below`
-            : undefined;
+          : gasRefusal;
+  // Shown only when gas is the one thing left in the way.
+  const needsGas = gasRefusal !== undefined && refusal === gasRefusal;
 
   return (
     <section className="card relative overflow-hidden p-6">
@@ -107,6 +109,7 @@ export function ShareCard({ id, heir, status, vault }: { id: string; heir: HeirV
         selfie check and claim
       </button>
       {refusal ? <p className="hint text-center">{refusal}</p> : null}
+      {needsGas ? <FundGas account={heir.account_id} shortBy={shortBy} held={cost.held} /> : null}
 
       <ul className="mt-6 space-y-3 border-t-2 border-ink pt-5">
         <Requirement met={unlocked} label="the estate is unlocked" detail={unlocked ? "the grantor stopped checking in and grace ran out" : "only if the grantor stops checking in and grace runs out"} />
@@ -149,6 +152,41 @@ export function ShareCard({ id, heir, status, vault }: { id: string; heir: HeirV
         onClose={() => setClaiming(false)}
       />
     </section>
+  );
+}
+
+/** How to put the claim's gas money on the heir's account: copy its address, or use the faucet. */
+function FundGas({ account, shortBy, held }: { account: string; shortBy: bigint; held: bigint }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="mt-4 space-y-3 rounded-[8px] border-2 border-ink bg-cream p-4">
+      <p className="text-sm">
+        <strong>your account needs a little NEAR to send the claim.</strong> the claim holds {formatNear(held)} NEAR up front for gas and
+        your records, and almost all of it comes back. send at least {formatNear(shortBy)} NEAR to it from any wallet
+        {FAUCET_URL ? ", or get free testnet NEAR from the faucet" : ""}. this button turns on by itself once it lands.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="mono min-w-0 flex-1 break-all rounded-[8px] border-2 border-ink bg-surface px-3 py-1.5 text-sm">{account}</span>
+        <button
+          type="button"
+          className="btn btn-sm btn-ghost"
+          onClick={() => void navigator.clipboard.writeText(account).then(() => setCopied(true))}
+        >
+          {copied ? (
+            <>
+              <CheckIcon size={14} /> copied
+            </>
+          ) : (
+            "copy address"
+          )}
+        </button>
+        {FAUCET_URL ? (
+          <a className="btn btn-sm btn-yellow" href={FAUCET_URL} target="_blank" rel="noreferrer">
+            testnet faucet
+          </a>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

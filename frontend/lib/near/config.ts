@@ -26,6 +26,9 @@ export const EXPLORER = NETWORK === "mainnet" ? "https://nearblocks.io" : "https
 export const txUrl = (hash: string) => `${EXPLORER}/txns/${hash}`;
 export const accountUrl = (id: string) => `${EXPLORER}/address/${id}`;
 
+/** A testnet faucet (community-run) that sends free testnet NEAR to any account. None on mainnet. */
+export const FAUCET_URL: string | null = NETWORK === "testnet" ? "https://near-faucet.io" : null;
+
 /** Where the heir credential images are fetched from (the estate's NEP-171 `base_uri`). */
 export const IPFS_GATEWAY = "https://gateway.pinata.cloud/ipfs";
 
