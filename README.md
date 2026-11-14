@@ -2,31 +2,48 @@
 
 > A crypto estate that no key can open. It stays locked while you prove, by selfie, that you're alive, and unlocks to your heirs when you stop.
 
-**NEAR HACKATHON 2026** · Tracks: NFTs That Do Something (`nfts`), Real-World Money (`realworld`), Open Innovation (`open`) · Built on NEAR testnet
+Disclosure (rule Q-015): Kelechikizito also submitted a separate, independent project to NEAR HACKATHON, [Bizzy-Fy](https://github.com/Kelechikizito/bizzy-fy), built alone. The two share no code.
 
-[Live app](https://herit-near-bpx6.vercel.app) · [Every estate opened so far](https://herit-near-bpx6.vercel.app/#estates) · [Deployments](#deployments) · [Proof it ran](#proof-it-ran) · [Hackathon diff](#what-was-built-during-the-hackathon)
+**NEAR HACKATHON 2026** · Tracks:
+
+- NFTs That Do Something (`nfts`)
+- Real-World Money (`realworld`)
+- Open Innovation (`open`) · Built on NEAR testnet
+
+- [Live app](https://herit-near-bpx6.vercel.app)
+- [Every estate opened so far](https://herit-near-bpx6.vercel.app/#estates)
+- [Deployments](#deployments)
+- [Proof it ran](#proof-it-ran)
+- [Hackathon diff](#what-was-built-during-the-hackathon)
 
 ---
 
 ## Contents
 
-- [The problem](#the-problem)
-- [How it works](#how-it-works)
-- [What makes this different](#what-makes-this-different)
-- [Architecture](#architecture)
-- [Deployments](#deployments)
-- [Proof it ran](#proof-it-ran)
-- [Try it](#try-it)
-  - [In two minutes, with no wallet](#in-two-minutes-with-no-wallet)
-  - [The whole flow](#the-whole-flow)
-- [Quick start](#quick-start)
-- [Testing](#testing)
-- [Known issues](#known-issues)
-- [Track alignment](#track-alignment)
-- [What was built during the hackathon](#what-was-built-during-the-hackathon)
-- [Tech stack](#tech-stack)
-- [What we'd build next](#what-wed-build-next)
-- [Team · License](#team--license)
+- [Herit](#herit)
+  - [Contents](#contents)
+  - [The problem](#the-problem)
+  - [How it works](#how-it-works)
+  - [What makes this different](#what-makes-this-different)
+  - [Architecture](#architecture)
+    - [Estate (`herit-estate/src/lib.rs`)](#estate-herit-estatesrclibrs)
+    - [Credential (`herit-estate/src/nft.rs`)](#credential-herit-estatesrcnftrs)
+    - [Factory (`herit-factory/src/lib.rs`)](#factory-herit-factorysrclibrs)
+    - [Attestor (`frontend/lib/attest.ts`, `near/attestor-worker`)](#attestor-frontendlibattestts-nearattestor-worker)
+    - [Frontend (`frontend/`)](#frontend-frontend)
+  - [Deployments](#deployments)
+  - [Proof it ran](#proof-it-ran)
+  - [Try it](#try-it)
+    - [In two minutes, with no wallet](#in-two-minutes-with-no-wallet)
+    - [The whole flow](#the-whole-flow)
+  - [Quick start](#quick-start)
+  - [Testing](#testing)
+  - [Known issues](#known-issues)
+  - [Track alignment](#track-alignment)
+  - [What was built during the hackathon](#what-was-built-during-the-hackathon)
+  - [Tech stack](#tech-stack)
+  - [What we'd build next](#what-wed-build-next)
+  - [Team · License](#team--license)
 
 ## The problem
 
@@ -109,39 +126,39 @@ Next.js 16. Wallets through HOT's `near-connect`; every read straight from NEAR 
 
 All on NEAR testnet. The contracts are reproducible builds (`sourcescan/cargo-near:0.21.1-rust-1.96.1`), so the code hash can be checked against this source.
 
-| What | Account or hash |
-|---|---|
-| Factory | [`herit-near.testnet`](https://testnet.nearblocks.io/address/herit-near.testnet) |
-| Estate code, Global Contract (current) | `65rC6sBJGosXHCGC6ityR3poJ68ecHDZsNRAPZQjkX2p`, published in [`rJEwbyoU…`](https://testnet.nearblocks.io/txns/rJEwbyoU9pQQz9W7xN52AoCPDKYx2aoPdY53eZFKTBR) |
+| What                                                           | Account or hash                                                                                                                                             |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Factory                                                        | [`herit-near.testnet`](https://testnet.nearblocks.io/address/herit-near.testnet)                                                                            |
+| Estate code, Global Contract (current)                         | `65rC6sBJGosXHCGC6ityR3poJ68ecHDZsNRAPZQjkX2p`, published in [`rJEwbyoU…`](https://testnet.nearblocks.io/txns/rJEwbyoU9pQQz9W7xN52AoCPDKYx2aoPdY53eZFKTBR)  |
 | Estate code, first version (estates opened before named heirs) | `87NJpRzyMsaL4WWYspngjbHoLBKPJSjiyrFEpDKXNgE8`, published in [`FvSiTJ2W…`](https://testnet.nearblocks.io/txns/FvSiTJ2W6etG8qX9Yx7iW8qxVE6AxTBEx52D3Ft5uHJ9) |
-| mUSDC (NEP-141 test token, 6 decimals) | [`mock-usdc-kaykay.testnet`](https://testnet.nearblocks.io/address/mock-usdc-kaykay.testnet) |
-| Web app | [herit-near-bpx6.vercel.app](https://herit-near-bpx6.vercel.app) |
+| mUSDC (NEP-141 test token, 6 decimals)                         | [`mock-usdc-kaykay.testnet`](https://testnet.nearblocks.io/address/mock-usdc-kaykay.testnet)                                                                |
+| Web app                                                        | [herit-near-bpx6.vercel.app](https://herit-near-bpx6.vercel.app)                                                                                            |
 
 ## Proof it ran
 
 **A whole estate, opened through the factory and claimed by both heirs** (`alice.herit-near.testnet`, run by [`near/scripts/smoke-testnet.sh`](near/scripts/smoke-testnet.sh)):
 
-| Step | Transaction |
-|---|---|
-| Alice opens the estate through the factory | [`56a5W8St…`](https://testnet.nearblocks.io/txns/56a5W8StD9NC5CXtHCwMP3xwz6XKvG78hYD7wpAfhfqm) |
-| Son added: his account is created and his credential minted | [`2J1LxqBp…`](https://testnet.nearblocks.io/txns/2J1LxqBp7ZBffc9zqGsTdnufwN65djfhmMyPSSFtdJLg) |
-| Daughter added | [`EGJjZ6hh…`](https://testnet.nearblocks.io/txns/EGJjZ6hhx3p1TPfNJt3TBTnqtQWz1876XfpSVrPfUszS) |
-| 3 NEAR deposited | [`BRMH7Uz7…`](https://testnet.nearblocks.io/txns/BRMH7Uz7sphkozW45RKoCTEruzrLMBSScA4GfxExqd1z) |
-| 10 mUSDC deposited with `ft_transfer_call` | [`De1Qs78K…`](https://testnet.nearblocks.io/txns/De1Qs78KtLyLTbefjcJkWDkdtLFW2cnjCDn18auZVfBH) |
-| Son's mUSDC share set to 25% | [`F7fxJbCU…`](https://testnet.nearblocks.io/txns/F7fxJbCUVMEvebt4mEdT848VAeJ9HUABvL8HbQyBZmgP) |
-| First check-in binds Alice's face and starts the clock | [`EG4JCk3C…`](https://testnet.nearblocks.io/txns/EG4JCk3ChiE2C7dpCfER1NktvJWfPz4SzoctbdWj8Qj6) |
-| Alice withdraws 0.5 NEAR with a fresh attestation | [`CRVET1Rb…`](https://testnet.nearblocks.io/txns/CRVET1Rbb1hxMJvDRQMDwknSVreVxZKw2AzqWAYNLmPN) |
+| Step                                                          | Transaction                                                                                    |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Alice opens the estate through the factory                    | [`56a5W8St…`](https://testnet.nearblocks.io/txns/56a5W8StD9NC5CXtHCwMP3xwz6XKvG78hYD7wpAfhfqm) |
+| Son added: his account is created and his credential minted   | [`2J1LxqBp…`](https://testnet.nearblocks.io/txns/2J1LxqBp7ZBffc9zqGsTdnufwN65djfhmMyPSSFtdJLg) |
+| Daughter added                                                | [`EGJjZ6hh…`](https://testnet.nearblocks.io/txns/EGJjZ6hhx3p1TPfNJt3TBTnqtQWz1876XfpSVrPfUszS) |
+| 3 NEAR deposited                                              | [`BRMH7Uz7…`](https://testnet.nearblocks.io/txns/BRMH7Uz7sphkozW45RKoCTEruzrLMBSScA4GfxExqd1z) |
+| 10 mUSDC deposited with `ft_transfer_call`                    | [`De1Qs78K…`](https://testnet.nearblocks.io/txns/De1Qs78KtLyLTbefjcJkWDkdtLFW2cnjCDn18auZVfBH) |
+| Son's mUSDC share set to 25%                                  | [`F7fxJbCU…`](https://testnet.nearblocks.io/txns/F7fxJbCUVMEvebt4mEdT848VAeJ9HUABvL8HbQyBZmgP) |
+| First check-in binds Alice's face and starts the clock        | [`EG4JCk3C…`](https://testnet.nearblocks.io/txns/EG4JCk3ChiE2C7dpCfER1NktvJWfPz4SzoctbdWj8Qj6) |
+| Alice withdraws 0.5 NEAR with a fresh attestation             | [`CRVET1Rb…`](https://testnet.nearblocks.io/txns/CRVET1Rbb1hxMJvDRQMDwknSVreVxZKw2AzqWAYNLmPN) |
 | Son claims: unlock, snapshot, 1.49903 NEAR and 2.5 mUSDC paid | [`576wFUGR…`](https://testnet.nearblocks.io/txns/576wFUGRt8CJaFNj3VzUaJ2ERAT4TCPnxPLP4DX6mseE) |
-| Daughter claims: 0.99935 NEAR and 4 mUSDC paid | [`2KavSpcd…`](https://testnet.nearblocks.io/txns/2KavSpcdTV5hxeDUh9e5ebbTCz5REQL5Vce3B8u5VWsh) |
+| Daughter claims: 0.99935 NEAR and 4 mUSDC paid                | [`2KavSpcd…`](https://testnet.nearblocks.io/txns/2KavSpcdTV5hxeDUh9e5ebbTCz5REQL5Vce3B8u5VWsh) |
 
 **Real Selfie Checks, and estates run through the web app:**
 
-| Step | Transaction |
-|---|---|
-| A real Selfie Check accepted as a `check_in` (`spike.herit-near.testnet`) | [`4MR22kUJ…`](https://testnet.nearblocks.io/txns/4MR22kUJqDaHhCgpNARGXTENg3JuNW2byAwEynsyxiHS) |
-| A second Selfie Check by the same person matches the bound face | [`8n7WT6uB…`](https://testnet.nearblocks.io/txns/8n7WT6uBJR1n7SMxT7jXLH6tckqhuMpxHk3ic5YExuGT) |
-| `kay.herit-near.testnet`: check-in from the setup wizard | [`DF7ZXDpe…`](https://testnet.nearblocks.io/txns/DF7ZXDpe9AePM3FzcQJhoNeFMEffwdt6m4w7LWqVpxyL) |
-| …a named heir, `kay-cousin-kaykay.testnet`, claims NEAR and mUSDC from their own wallet | [`7UJnn88i…`](https://testnet.nearblocks.io/txns/7UJnn88iX5f4naW5gAToi862Jyswm8Kiu3XGNuSbQHHk) |
+| Step                                                                                     | Transaction                                                                                    |
+| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| A real Selfie Check accepted as a `check_in` (`spike.herit-near.testnet`)                | [`4MR22kUJ…`](https://testnet.nearblocks.io/txns/4MR22kUJqDaHhCgpNARGXTENg3JuNW2byAwEynsyxiHS) |
+| A second Selfie Check by the same person matches the bound face                          | [`8n7WT6uB…`](https://testnet.nearblocks.io/txns/8n7WT6uBJR1n7SMxT7jXLH6tckqhuMpxHk3ic5YExuGT) |
+| `kay.herit-near.testnet`: check-in from the setup wizard                                 | [`DF7ZXDpe…`](https://testnet.nearblocks.io/txns/DF7ZXDpe9AePM3FzcQJhoNeFMEffwdt6m4w7LWqVpxyL) |
+| …a named heir, `kay-cousin-kaykay.testnet`, claims NEAR and mUSDC from their own wallet  | [`7UJnn88i…`](https://testnet.nearblocks.io/txns/7UJnn88iX5f4naW5gAToi862Jyswm8Kiu3XGNuSbQHHk) |
 | `keytest.herit-near.testnet`: a key heir claims by loading their key file in the browser | [`CwePayHh…`](https://testnet.nearblocks.io/txns/CwePayHhLZ31BWHUaTwbL4VLWtYsRkzw9njGBnZHhHuD) |
 
 ## Try it
@@ -195,13 +212,13 @@ pnpm dev                        # http://localhost:3000
 
 All passing on the commit this README describes:
 
-| Suite | Tests | What |
-|---|---|---|
-| Estate unit, fuzz and invariant (`cargo test -p herit-estate`) | 181 | Every method, plus `proptest` properties over random inputs and random call sequences |
-| Factory unit and fuzz | 15 | The open batch, its rollback, listing, the attestor and code switches |
-| mUSDC | 3 | The test token |
-| Sandbox ([`near/tests/`](near/tests/)) | 38 | A real local NEAR node running the release wasm: check-ins, heirs as real accounts, the vault with real NEP-141 transfers, claims, the credential, the factory with a published Global Contract, and one whole lifecycle |
-| Frontend (`pnpm test`) | 58 | Attestation checks against a recorded World reply, transaction building, setup resumption, heir discovery, key files, credential state |
+| Suite                                                          | Tests | What                                                                                                                                                                                                                     |
+| -------------------------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Estate unit, fuzz and invariant (`cargo test -p herit-estate`) | 181   | Every method, plus `proptest` properties over random inputs and random call sequences                                                                                                                                    |
+| Factory unit and fuzz                                          | 15    | The open batch, its rollback, listing, the attestor and code switches                                                                                                                                                    |
+| mUSDC                                                          | 3     | The test token                                                                                                                                                                                                           |
+| Sandbox ([`near/tests/`](near/tests/))                         | 38    | A real local NEAR node running the release wasm: check-ins, heirs as real accounts, the vault with real NEP-141 transfers, claims, the credential, the factory with a published Global Contract, and one whole lifecycle |
+| Frontend (`pnpm test`)                                         | 58    | Attestation checks against a recorded World reply, transaction building, setup resumption, heir discovery, key files, credential state                                                                                   |
 
 The invariants, checked after every step of random call sequences (`proptest`):
 
@@ -221,11 +238,11 @@ The invariants, checked after every step of random call sequences (`proptest`):
 
 ## Track alignment
 
-| Track criterion | Where this submission meets it |
-|---|---|
+| Track criterion                                                                                                                                                              | Where this submission meets it                                                                                                                                                                                                                                                                                                                              |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **NFTs That Do Something:** "NFTs as accounts — assets that … carry credentials, memberships or access rights. Ownership with behavior." DYNAMIC NFTS, NEP-171, SUB-ACCOUNTS | The heir credential is a NEP-171 token whose state is computed live from the estate ([`nft.rs#L202-L217`](https://github.com/FemiOje/herit-near/blob/c039bc0a3d579e53925e414e90fb97ad886bcfc1/near/contracts/herit-estate/src/nft.rs#L202-L217)); it is the heir's claim right; heirs are sub-accounts of the estate, which is a sub-account of the factory |
-| **Real-World Money:** "Something a normal company could use tomorrow." STABLECOINS | Inheritance of NEAR and any NEP-141 stablecoin, with per-asset shares, paid straight to the heirs' accounts ([`claim`](https://github.com/FemiOje/herit-near/blob/c039bc0a3d579e53925e414e90fb97ad886bcfc1/near/contracts/herit-estate/src/lib.rs#L463-L576)) |
-| **Open Innovation:** "new ways for money, intelligence and ownership to work together" | Keyless accounts on published Global Contract code, unlocked by proof of life rather than by a key |
+| **Real-World Money:** "Something a normal company could use tomorrow." STABLECOINS                                                                                           | Inheritance of NEAR and any NEP-141 stablecoin, with per-asset shares, paid straight to the heirs' accounts ([`claim`](https://github.com/FemiOje/herit-near/blob/c039bc0a3d579e53925e414e90fb97ad886bcfc1/near/contracts/herit-estate/src/lib.rs#L463-L576))                                                                                               |
+| **Open Innovation:** "new ways for money, intelligence and ownership to work together"                                                                                       | Keyless accounts on published Global Contract code, unlocked by proof of life rather than by a key                                                                                                                                                                                                                                                          |
 
 ## What was built during the hackathon
 
@@ -237,14 +254,14 @@ Herit started at ETHOnline 2026 as a Solidity app on Sepolia (ENSv2 subnames and
 
 ## Tech stack
 
-| Layer | What |
-|---|---|
-| Contracts | Rust, `near-sdk` 5.30.1, `near-contract-standards` (NEP-171 types), Global Contracts, reproducible builds with `cargo-near` |
-| Tests | `cargo test`, `proptest`, `near-workspaces` sandbox |
-| Liveness | World ID Selfie Check (`@worldcoin/idkit` 4.2.3), verified by our attestor |
-| Attestor for mainnet | OutLayer worker (`wasm32-wasip2`) |
-| Frontend | Next.js 16, React 19, TanStack Query, Tailwind 4, `near-api-js` 7, HOT `near-connect` |
-| Data | NEAR RPC (FastNEAR), FastNEAR transaction API, Pinata IPFS for the credential images |
+| Layer                | What                                                                                                                        |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Contracts            | Rust, `near-sdk` 5.30.1, `near-contract-standards` (NEP-171 types), Global Contracts, reproducible builds with `cargo-near` |
+| Tests                | `cargo test`, `proptest`, `near-workspaces` sandbox                                                                         |
+| Liveness             | World ID Selfie Check (`@worldcoin/idkit` 4.2.3), verified by our attestor                                                  |
+| Attestor for mainnet | OutLayer worker (`wasm32-wasip2`)                                                                                           |
+| Frontend             | Next.js 16, React 19, TanStack Query, Tailwind 4, `near-api-js` 7, HOT `near-connect`                                       |
+| Data                 | NEAR RPC (FastNEAR), FastNEAR transaction API, Pinata IPFS for the credential images                                        |
 
 Libraries are used as published. Code was written by the team with Claude Code (Anthropic) as a coding assistant.
 
@@ -255,7 +272,5 @@ Libraries are used as published. Code was written by the team with Claude Code (
 ## Team · License
 
 Built by [Kelechikizito](https://github.com/Kelechikizito) and [jinius](https://github.com/FemiOje).
-
-Disclosure (rule Q-015): Kelechikizito also submitted a separate, independent project to NEAR HACKATHON, [Bizzy-Fy](https://github.com/Kelechikizito/bizzy-fy), built alone. The two share no code.
 
 [MIT](LICENSE)
