@@ -8,6 +8,26 @@
 
 ---
 
+## Contents
+
+- [The problem](#the-problem)
+- [How it works](#how-it-works)
+- [What makes this different](#what-makes-this-different)
+- [Architecture](#architecture)
+- [Deployments](#deployments)
+- [Proof it ran](#proof-it-ran)
+- [Try it](#try-it)
+  - [In two minutes, with no wallet](#in-two-minutes-with-no-wallet)
+  - [The whole flow](#the-whole-flow)
+- [Quick start](#quick-start)
+- [Testing](#testing)
+- [Known issues](#known-issues)
+- [Track alignment](#track-alignment)
+- [What was built during the hackathon](#what-was-built-during-the-hackathon)
+- [Tech stack](#tech-stack)
+- [What we'd build next](#what-wed-build-next)
+- [Team · License](#team--license)
+
 ## The problem
 
 Ada holds savings in a self-custody wallet. If she dies tomorrow, they die with her: nobody else has the key. The usual fixes all hand someone a key. She can write down her seed phrase, which anyone who finds it can spend today. She can use a custodian, who can freeze it or be hacked. Or she can use a "dead man's switch" that unlocks if she stops signing, which anyone holding her phone can keep signing for her.
